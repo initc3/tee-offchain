@@ -2,9 +2,10 @@ use cosmwasm_std::{entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageIn
 // use secret_toolkit::utils::pad_handle_result;
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
+use schemars::_serde_json::to_string;
 // use secret_toolkit::crypto::sha_256;
 
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryAnswer, QueryMsg};
+use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, QueryAnswer, QueryMsg};
 use crate::state::{State, CONFIG_KEY};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -18,6 +19,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     // grab random entropy that is produced by the consensus
     let entropy = env.block.random.unwrap();
+
     // The `State` is created
     let config = State {
         owner: info.sender,
@@ -70,6 +72,9 @@ fn try_apply_update(
     new_counter: Uint128,
     new_hash: Binary,
 ) -> StdResult<Response> {
+
+
+
     Ok(Response::new())
 }
 
@@ -93,21 +98,23 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     let res = match msg {
         QueryMsg::GetState {} => {
             let store = CONFIG_KEY.load(deps.storage).unwrap();
-            let future_mac = gen_mac(deps, env, state.counter, state.current_hash);
+
+            let future_mac = gen_mac(deps, store.counter, store.current_hash.clone()).unwrap();
+
             GetStateAnswer {
-                counter: state.counter,
-                current_hash: state.current_hash,
-                future_mac: gen_mac(deps, env, state.counter, state.current_hash)
+                counter: store.counter,
+                current_hash: store.current_hash,
+                future_mac: future_mac.1
             }
         }
     };
-    Ok(Binary::default())
+
+    let res_as_json = to_string(&res).unwrap();
+
+    Ok(Binary::from(res_as_json.as_bytes()))
 }
 
-fn gen_hash(deps: Deps, counter_in: Uint128, current_hash: Binary) -> StdResult<Binary> {
-    // Counter
-    let store = CONFIG_KEY.load(deps.storage).unwrap();
-
+fn gen_hash(counter_in: Uint128, current_hash: Binary) -> StdResult<Binary> {
     let mut hasher = Sha256::default();
     let counter_as_bytes = counter_in.to_le_bytes();
 
@@ -120,10 +127,10 @@ fn gen_hash(deps: Deps, counter_in: Uint128, current_hash: Binary) -> StdResult<
 }
 
 /// Returns a view of the state. Returns the current counter, new hash, mac
-fn gen_mac(deps: Deps, env: Env, counter_in: Uint128, current_hash: Binary) -> StdResult<(Uint128, Binary, Binary)> {
+fn gen_mac(counter_in: Uint128, current_hash: Binary) -> StdResult<(Uint128, Binary)> {
     // in theory we've already instantiated the contract so this cannot fail...
-    let counter = counter_in.clone() + 1;
-    let new_hash = gen_hash(deps, counter, current_hash);
+    let new_hash = gen_hash(counter_in, current_hash).unwrap();
     // return the the counter,
-    Ok((counter, new_hash))
+    Ok((counter_in, new_hash))
 }
+
