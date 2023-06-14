@@ -141,11 +141,12 @@ fn gen_hash(deps: Deps, counter_in: Uint128) -> StdResult<Binary> {
     let counter_as_bytes = counter_in.to_le_bytes();
 
     // Hashed result
-    let hasher = Sha256::default();
+    let mut hasher = Sha256::default();
 
     hasher.update(counter_as_bytes.as_slice());
 
-    let hash_digest = hasher.finalize().as_slice();
+    let finalized_hash = hasher.finalize();
+    let hash_digest = finalized_hash.as_slice();
 
     Ok(Binary::from(hash_digest))
 }
