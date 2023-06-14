@@ -40,18 +40,14 @@ schemars = "0.8.8"
 sha2 = { version = "0.10.6"}
 hmac = { version = "0.12.1" }
 cw-storage-plus = "1.0.1"
-cosmwasm-std = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm", features = [
-  "random",
-] }
-cosmwasm-storage = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm" }
+cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.10", features = ["random"]}
+cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.1.10", default-features = false}
 cosmwasm-schema = "1.0.0"
-secret-toolkit = { version = "0.9.0", default-features = false, features = ["utils", "storage", "serialization", "permit"] }
+#secret-toolkit = { version = "0.9.0", default-features = false, features = ["utils", "storage", "serialization", "crypto"] }
 
-[patch.crates-io]
-cosmwasm-std = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm" }
-cosmwasm-storage = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm" }
+#[patch.crates-io]
+#cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.10", features = ["random"]}
+#cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.1.10", default-features = false}
 
-
-#[patch."https://github.com/scrtlabs/cosmwasm?foo=bar"]
-#cosmwasm-std = { git = "https://github.com/scrtlabs/cosmwasm", rev = "d2a02cf9c734c1aa86b0d1c6607ece4317892dbb" }
-#cosmwasm-storage = { git = "https://github.com/scrtlabs/cosmwasm", rev = "d2a02cf9c734c1aa86b0d1c6607ece4317892dbb" }
+#
+#[patch."https://github.com/scrtlabs/cosmwasm?foo"]
