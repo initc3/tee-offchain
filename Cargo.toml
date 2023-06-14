@@ -1,0 +1,57 @@
+[package]
+name = "secret_contract_template"
+version = "1.0.0"
+authors = ["Gabe Arrouye"]
+edition = "2021"
+
+exclude = [
+  # Those files are rust-optimizer artifacts. You might want to commit them for convenience but they should not be part of the source code publication.
+  "contract.wasm",
+  "hash.txt",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true
+
+[features]
+default = []
+# for quicker tests, cargo test --lib
+# for more explicit tests, cargo test --features=backtraces
+#backtraces = ["cosmwasm-std/backtraces"]
+#debug-print = ["cosmwasm-std/debug-print"]
+
+[dependencies]
+snafu = { version = "0.7.4" }
+serde = { version = "1.0.103", default-features = false, features = ["derive"] }
+schemars = "0.8.8"
+sha2 = { version = "0.10.6"}
+hmac = { version = "0.12.1" }
+cw-storage-plus = "1.0.1"
+cosmwasm-std = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm", features = [
+  "random",
+] }
+cosmwasm-storage = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm" }
+cosmwasm-schema = "1.0.0"
+secret-toolkit = { version = "0.9.0", default-features = false, features = ["utils", "storage", "serialization", "permit"] }
+
+[patch.crates-io]
+cosmwasm-std = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm" }
+cosmwasm-storage = { version = "1.1.10", git = "https://github.com/scrtlabs/cosmwasm" }
+
+
+#[patch."https://github.com/scrtlabs/cosmwasm?foo=bar"]
+#cosmwasm-std = { git = "https://github.com/scrtlabs/cosmwasm", rev = "d2a02cf9c734c1aa86b0d1c6607ece4317892dbb" }
+#cosmwasm-storage = { git = "https://github.com/scrtlabs/cosmwasm", rev = "d2a02cf9c734c1aa86b0d1c6607ece4317892dbb" }
