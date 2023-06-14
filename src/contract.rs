@@ -18,10 +18,10 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     // grab random entropy that is produced by the consensus
     let entropy = env.block.random.unwrap();
-
     // The `State` is created
     let config = State {
         owner: info.sender,
+        key: entropy.clone(),
         current_hash: entropy,
         counter: Uint128::zero()
     };
@@ -70,9 +70,6 @@ fn try_apply_update(
     new_counter: Uint128,
     new_hash: Binary,
 ) -> StdResult<Response> {
-
-
-
     Ok(Response::new())
 }
 
@@ -89,73 +86,44 @@ fn try_iterate_hash(
     Ok(Response::new())
 }
 
-/// Returns Result<Response, ContractError>
-///
-/// create a viewing key
-///
-/// # Arguments
-///
-/// * `deps`    - DepsMut containing all the contract's external dependencies
-/// * `env`     - Env of contract's environment
-/// * `info`    - Carries the info of who sent the message and how much native funds were sent along
-/// * `entropy` - string to be used as an entropy source for randomization
-fn try_create_key(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    entropy: String,
-) -> StdResult<Response> {
-    // let key = ViewingKey::create(
-    //     deps.storage,
-    //     &info,
-    //     &env,
-    //     info.sender.as_str(),
-    //     entropy.as_bytes(),
-    // );
-
-    Ok(Response::new())
-}
-
 // ---------------------------------------- QUERIES --------------------------------------
 
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     let res = match msg {
         QueryMsg::GetState {} => {
-
+            let store = CONFIG_KEY.load(deps.storage).unwrap();
+            let future_mac = gen_mac(deps, env, state.counter, state.current_hash);
+            GetStateAnswer {
+                counter: state.counter,
+                current_hash: state.current_hash,
+                future_mac: gen_mac(deps, env, state.counter, state.current_hash)
+            }
         }
     };
     Ok(Binary::default())
 }
 
-fn query_ex(_deps: Deps) -> StdResult<Binary> {
-    Ok(to_binary(&QueryAnswer::QueryExAns {})?)
-}
-
-fn query_permissioned(_deps: Deps, _viewer: String) -> StdResult<Binary> {
-    Ok(to_binary(&QueryAnswer::QueryExAns {})?)
-}
-
-fn gen_hash(deps: Deps, counter_in: Uint128) -> StdResult<Binary> {
+fn gen_hash(deps: Deps, counter_in: Uint128, current_hash: Binary) -> StdResult<Binary> {
     // Counter
+    let store = CONFIG_KEY.load(deps.storage).unwrap();
+
+    let mut hasher = Sha256::default();
     let counter_as_bytes = counter_in.to_le_bytes();
 
-    // Hashed result
-    let mut hasher = Sha256::default();
-
     hasher.update(counter_as_bytes.as_slice());
+    hasher.update(current_hash.as_slice());
 
     let finalized_hash = hasher.finalize();
     let hash_digest = finalized_hash.as_slice();
-
     Ok(Binary::from(hash_digest))
 }
 
 /// Returns a view of the state. Returns the current counter, new hash, mac
-fn gen_mac(deps: Deps, env: Env) -> StdResult<(Uint128, Binary, Binary)> {
+fn gen_mac(deps: Deps, env: Env, counter_in: Uint128, current_hash: Binary) -> StdResult<(Uint128, Binary, Binary)> {
     // in theory we've already instantiated the contract so this cannot fail...
-    let store = CONFIG_KEY.load(deps.storage).unwrap();
-
+    let counter = counter_in.clone() + 1;
+    let new_hash = gen_hash(deps, counter, current_hash);
     // return the the counter,
-    Ok((Uint128::zero(), Binary::default(), Binary::default()))
+    Ok((counter, new_hash))
 }
