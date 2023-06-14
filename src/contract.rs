@@ -1,10 +1,8 @@
-use std::ops::DerefMut;
 use cosmwasm_std::{entry_point, to_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult};
 // use secret_toolkit::utils::pad_handle_result;
-use sha2::Sha256;
+use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
-use secret_toolkit::crypto::sha_256;
-use serde::Serialize;
+// use secret_toolkit::crypto::sha_256;
 
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryAnswer, QueryMsg};
 use crate::state::{State, CONFIG_KEY};
@@ -143,7 +141,13 @@ fn gen_hash(deps: Deps, counter_in: Uint128) -> StdResult<Binary> {
     let counter_as_bytes = counter_in.to_le_bytes();
 
     // Hashed result
-    let hash = sha_256(counter_as_bytes.as_slice());
+    let hasher = Sha256::default();
+
+    hasher.update(counter_as_bytes.as_slice());
+
+    let hash_digest = hasher.finalize().as_slice();
+
+    Ok(Binary::from(hash_digest))
 }
 
 /// Returns a view of the state. Returns the current counter, new hash, mac
