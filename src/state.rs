@@ -14,6 +14,7 @@ pub const BLOCK_SIZE: usize = 256;
 #[cw_serde]
 pub struct State {
     pub owner: Addr,
+    pub key: Binary,
     pub current_hash: Binary,
     pub counter: Uint128,
 }

@@ -34,3 +34,11 @@ pub enum QueryAnswer {
     QueryExAns {},
     ViewingKeyError { error: String },
 }
+
+
+#[cw_serde]
+pub struct GetStateAnswer {
+    pub counter: Uint128,
+    pub current_hash: Binary,
+    pub future_mac: Binary,
+}
