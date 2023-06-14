@@ -99,7 +99,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::GetState {} => {
             let store = CONFIG_KEY.load(deps.storage).unwrap();
 
-            let future_mac = gen_mac(deps, store.counter, store.current_hash.clone()).unwrap();
+            let future_mac = gen_mac(store.counter, store.current_hash.clone()).unwrap();
 
             GetStateAnswer {
                 counter: store.counter,
