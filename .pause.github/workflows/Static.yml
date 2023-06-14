@@ -52,7 +52,7 @@ jobs:
         run: |
           brew update
           brew install sccache
-      - uses: ./.github/actions/install-rust
+      - uses: ./.pause.github/actions/install-rust
         with:
           toolchain: ${{ matrix.rust }}
       - name: Add wasm toolchain
