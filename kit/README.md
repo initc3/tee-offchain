@@ -1,6 +1,6 @@
 # The fastest way to build Svelte apps
 
-hi
+hihi
 
 This is the [SvelteKit](https://kit.svelte.dev) framework and CLI.
 
