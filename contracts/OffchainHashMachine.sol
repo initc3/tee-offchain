@@ -6,7 +6,7 @@ import "@oasisprotocol/sapphire-contracts/contracts/Sapphire.sol";
 // Uncomment this line to use console.log
 // import "hardhat/console.sol";
 
-contract VeiledToken {
+contract OffchainHashMachine {
     bytes32 seed;
     
     constructor() {
