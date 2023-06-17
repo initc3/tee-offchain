@@ -33,6 +33,11 @@
 
 <p>Click the "Submit" button to send.</p>
 
+<!-- create read only text that posts what is happening in backend-->
+<!--Sequence Processed() uint seq number processed-->
+<!--GET Next Received () uint since seq number-->
+<!--POST Receipt () Seq number, from, amount, memo-->
+
 <style>
 	.centered {
 		max-width: 40em;
