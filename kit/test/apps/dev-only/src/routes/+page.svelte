@@ -21,12 +21,12 @@
   </label><br><br>
   <label for="amt_to">
     Amount:
-      <input type"number" id="amt_to"> name="amt_to">
+      <input type"number" id="amt_to" name="amt_to">
       </input>
   </label><br>
   <label for="memo_to">
     Memo:
-      <input type"text" id="memo_to"> name="memo_to" size="32">
+      <input type"text" id="memo_to" name="memo_to" size="32">
       </input>
   </label>
 </form>
