@@ -90,20 +90,27 @@
 				background: var(--link);
 				color: var(--bg-1);
 				padding: 0.5rem 1rem;
-				border: none;
+				border:.5rem solid #f5f5f5;
+        border-left:.5rem solid #000;
 				border-radius: var(--border-radius);
 			}
 
 			button:hover {
 				background: var(--link-hover);
+        border:.5rem solid #f5f5f5;
+        border-left:.5rem solid #000;
 			}
 
 			button:active {
 				background: var(--link-active);
+        border:.5rem solid #f5f5f5;
+        border-left:.5rem solid #000;
 			}
 
 			:is(button, button:hover, button:active):disabled {
 				background: var(--link);
+        border:.5rem solid #f5f5f5;
+        border-left:.5rem solid #000;
 				filter: grayscale(1);
 				opacity: 0.4;
 			}
@@ -149,24 +156,6 @@
 				margin: 0.5rem 0;
 			}
 
-			nav {
-				position: relative;
-				display: flex;
-				gap: 1em;
-				padding: 1em;
-				background: var(--bg-2);
-				z-index: 2;
-				margin: 0 0 1em 0;
-				border-radius: var(--border-radius);
-			}
-
-			nav a {
-				text-decoration: none;
-			}
-
-			nav a[aria-current='true'] {
-				border-bottom: 2px solid;
-			}
 
 			ul:has(form) {
 				list-style: none;
