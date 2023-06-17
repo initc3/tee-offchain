@@ -19,7 +19,8 @@ unit-test:
 .PHONY: build _build
 build: _build compress-wasm
 _build:
-	RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --features="debug-print"
+	#RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --features="debug-print"
+	RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
 
 # This is a build suitable for uploading to mainnet.
 # Calls to `debug_print` get removed by the compiler.
@@ -62,7 +63,16 @@ start-server: # CTRL+C to stop
 store-contract-local:
 	docker exec secretdev secretcli tx compute store -y --from a --gas 1000000 /root/code/contract.wasm.gz
 
+.PHONY: contract
+contract:
+	DOCKER_BUILDKIT=1 docker build \
+			--target artifact \
+      --tag tee-offchain:artifact \
+			--output type=local,dest=artifacts \
+			.
+
 .PHONY: clean
 clean:
 	cargo clean
 	-rm -f ./contract.wasm ./contract.wasm.gz
+	-rm -f ./artifacts/*
