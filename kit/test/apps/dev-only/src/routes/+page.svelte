@@ -13,7 +13,7 @@
 <div id="content">
 <h2>Send</h2>
 
-<form method="POST">
+<form method=""> <!--need server-side action-->
   <label for="addr_to">
     To:
       <input type="text" id="addr_to" name="addr_to">
