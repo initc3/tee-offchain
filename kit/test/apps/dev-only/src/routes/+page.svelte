@@ -32,7 +32,7 @@
     Amount:
       <input type"number" id="amt_to" name="amt_to">
       </input>
-  </label><br>
+  </label><br><br>
   <label for="memo_to">
     Memo:
       <input type"text" id="memo_to" name="memo_to" size="32">
@@ -60,25 +60,21 @@ body {
 
 
 #swirl {
-  	opacity: 0.8;
-  	z-index: 1;
-	position: absolute;
+  opacity: 0.8;
 	max-width: 40em;
 
 }
 
 .centered {
-		opacity: 0.2;
-  		z-index: 2;
+		opacity: 0.8;
 		max-width: 30em;
 		margin: 2em auto; 
-    	position: relative;
 	}
 
 	#content{
-        opacity: 0.4;
-		position: relative;
-		border: .5em solid #333;
+        opacity: 0.8;
+		    position: relative;
+		    border: .5em solid #333;
         background-color: #333366;
         margin: 2em auto;
         padding: 1em;
@@ -99,7 +95,7 @@ body {
 
 	button {
 		border: none;
-    	background: url(./remove.svg) no-repeat 50% 50%;
+    background: url(./remove.svg) no-repeat 50% 50%;
 		background-size: 1rem 1rem;
 		cursor: pointer;
 		height: 100%;
