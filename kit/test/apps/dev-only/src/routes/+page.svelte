@@ -2,6 +2,10 @@
 	import { base, assets } from '$app/paths';
 </script>
 
+<div>
+<img src="" alt="Swirl colors top graphic" width="100" height="100" loading="lazy">
+</div>
+
 <div class="centered">
 <h1>TEE contract offchain demo</h1>
 
@@ -13,7 +17,7 @@
 <div id="content">
 <h2>Send</h2>
 
-<form method=""> <!--need server-side action-->
+<form method="POST"> <!--need server-side action and js if-return statements-->
   <label for="addr_to">
     To:
       <input type="text" id="addr_to" name="addr_to">
@@ -42,9 +46,13 @@
 
 
 <style>
-	.centered {
+
+.bcknd {
+
+.centered {
 		max-width: 40em;
 		margin: 2em auto; 
+    position: relative;
 	}
 
 	#content{
@@ -52,6 +60,8 @@
         background-color: #333366;
         margin: 2em auto;
         padding: 1em;
+        position: relative;
+        opacity: 30%;
         
     }
     
