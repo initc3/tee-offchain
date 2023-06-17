@@ -23,7 +23,7 @@
     Amount:
       <input type"number" id="amt_to"> name="amt_to">
       </input>
-  </label>
+  </label><br>
   <label for="memo_to">
     Memo:
       <input type"text" id="memo_to"> name="memo_to" size="32">
@@ -32,11 +32,14 @@
 </form>
 
 <p>Click the "Submit" button to send.</p>
+</div>
 
 <!-- create read only text that posts what is happening in backend-->
 <!--Sequence Processed() uint seq number processed-->
 <!--GET Next Received () uint since seq number-->
 <!--POST Receipt () Seq number, from, amount, memo-->
+</div>
+
 
 <style>
 	.centered {
