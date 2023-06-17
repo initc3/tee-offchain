@@ -38,6 +38,8 @@
       <input type"text" id="memo_to" name="memo_to" size="32">
       </input>
   </label>
+<input type="submit" value="Submit">
+  </input>
 </form>
 
 <p>Click the "Submit" button to send.</p>
