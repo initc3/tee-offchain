@@ -12,10 +12,7 @@ WORKDIR /usr/src/tee-offchain
 
 COPY . .
 
-RUN rustup target add wasm32-unknown-unknown
-
 RUN make clean
-
 FROM dev as contract.wasm.gz
 
 RUN RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked
