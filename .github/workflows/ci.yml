@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  contract:
+  test-contract:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,3 +18,25 @@ jobs:
           target: wasm32-unknown-unknown
           components: rustfmt, clippy
       - run: cargo test
+  build-contract:
+    env:
+      IMAGE_NAME: initc3/tee-offchain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Set Short SHA
+        id: vars
+        run: echo "::set-output name=short_sha::$(git rev-parse --short HEAD)"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Build docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile
+          target: contract.wasm.gz
+          builder: ${{ steps.buildx.outputs.name }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.short_sha }},
+            ${{ env.IMAGE_NAME }}:latest,
