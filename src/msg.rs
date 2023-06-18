@@ -53,6 +53,9 @@ pub enum QueryMsg {
     },
 
     GetCheckpoint {
+    },
+    ProcessNext {
+        cipher: Binary
     }
 }
 
@@ -74,4 +77,10 @@ pub struct IterateHashAnswer {
 pub struct GetRequestAnswer {
     pub reqtype: ReqType,
     pub from: Addr
+}
+
+#[cw_serde]
+pub struct ProcessResponseAnswer {
+    pub req_cipher: Binary,
+    pub checkpoint_cipers: Binary
 }

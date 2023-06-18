@@ -1,78 +1,9 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult, ensure, StdError, to_binary, from_binary, Addr};
+use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, StdResult, ensure, StdError, to_binary, Addr};
 use sha2::{Sha256, Digest};
-use hmac::{Hmac, Mac};
-use schemars::_serde_json::to_string;
-use ring::{aead, error};
-use secret_toolkit_crypto::ContractPrng;
-use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer};
-use crate::state::{State, ReqType, ReqState, SymmetricKey, CheckPoint, AEAD_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, PREFIX_REQUESTS_KEY, CHECKPOINT_SEQNO_KEY, PREFIX_CHECKPOINT_KEY, CHECKPOINT_LEN_KEY};
-
-type HmacSha256 = Hmac<Sha256>;
-static AES_MODE: &aead::Algorithm = &aead::AES_256_GCM;
-
-/// The IV key byte size
-const IV_SIZE: usize = 96/8;
-/// Type alias for the IV byte array
-type IV = [u8; IV_SIZE];
-
-/// `OneNonceSequence` is a Generic Nonce sequence
-pub struct OneNonceSequence(Option<aead::Nonce>);
-
-impl OneNonceSequence {
-    /// Constructs the sequence allowing `advance()` to be called
-    /// `allowed_invocations` times.
-    fn new(nonce: aead::Nonce) -> Self {
-        Self(Some(nonce))
-    }
-}
-
-impl aead::NonceSequence for OneNonceSequence {
-    fn advance(&mut self) -> Result<aead::Nonce, error::Unspecified> {
-        self.0.take().ok_or(error::Unspecified)
-    }
-}
-pub fn encrypt_with_nonce(message: &[u8], key: &SymmetricKey, iv: &[u8; 12]) -> Result<Vec<u8>, StdError> {
-
-    let aes_encrypt = aead::UnboundKey::new(&AES_MODE, key)
-        .map_err(|_| StdError::generic_err("Encryption Error"))?;
-
-    let mut in_out = message.to_owned();
-    let tag_size = AES_MODE.tag_len();
-    in_out.extend(vec![0u8; tag_size]);
-    let _seal_size = {
-        let iv = aead::Nonce::assume_unique_for_key(*iv);
-        let nonce_sequence = OneNonceSequence::new(iv);
-        let mut seal_key: aead::SealingKey<OneNonceSequence> = aead::BoundKey::new(aes_encrypt, nonce_sequence);
-        seal_key.seal_in_place_append_tag(aead::Aad::empty(), &mut in_out)
-            .map_err(|_| StdError::generic_err("Encryption Error"))
-    }?;
-    // in_out.truncate(seal_size);
-    in_out.extend_from_slice(iv);
-    Ok(in_out)
-}
-pub fn decrypt(cipheriv: &[u8], key: &SymmetricKey) -> Result<Vec<u8>, StdError> {
-    if cipheriv.len() < IV_SIZE {
-        return Err(StdError::generic_err("Improper encryption Error"));
-    }
-    let aes_decrypt = aead::UnboundKey::new(&AES_MODE, key)
-        .map_err(|_| StdError::generic_err("Unbound key Error"))?;
-
-    let (ciphertext, iv) = cipheriv.split_at(cipheriv.len()-12);
-    let nonce = aead::Nonce::try_assume_unique_for_key(&iv).unwrap(); // This Cannot fail because split_at promises that iv.len()==12
-    let nonce_sequence = OneNonceSequence::new(nonce);
-    let mut ciphertext = ciphertext.to_owned();
-    let mut open_key: aead::OpeningKey<OneNonceSequence>  = aead::BoundKey::new(aes_decrypt, nonce_sequence);
-    let decrypted_data = match open_key.open_in_place(aead::Aad::empty(), &mut ciphertext) {
-        Ok(x) => x,
-        Err(e) => {
-            println!("symmetric:decrypt open_in_place err {:?}",e);
-            return Err(StdError::generic_err("Decryption Error"));
-        }
-    };
-    // let decrypted_data = decrypted_data.map_err(|_| CryptoError::DecryptionError)?;
-
-    Ok(decrypted_data.to_vec())
-}
+use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
+use crate::state::{State, ReqType, CheckPoint, Request, ResponseState};
+use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY};
+use crate::utils::{get_key, bool_to_uint128};
 
 #[entry_point]
 pub fn instantiate(
@@ -82,7 +13,7 @@ pub fn instantiate(
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
     // grab random entropy that is produced by the consensus
-    let entropy = env.block.random.unwrap();
+    let entropy = env.block.random.as_ref().unwrap();
 
     // The `State` is created
     let config = State {
@@ -91,23 +22,20 @@ pub fn instantiate(
         current_hash: entropy.clone(),
         counter: Uint128::zero()
     };
-    let mut hasher = Sha256::default();
-    hasher.update(entropy.clone().as_slice());
-    let finalized_hash = hasher.finalize();
-    let prng_seed = finalized_hash.as_slice();
-    let mut rng = ContractPrng::new(&prng_seed, entropy.as_slice());
-    let symmetric_key: SymmetricKey = rng.rand_bytes();
+
     let zero_val = Uint128::zero();
+
+    let symmetric_key = get_key(env);
+    let checkpoint = CheckPoint {
+        checkpoint: Vec::new(),
+        seqno: zero_val
+    };
 
     // Save data to storage
     CONFIG_KEY.save(deps.storage, &config).unwrap();
-    CHECKPOINT_SEQNO_KEY.save(deps.storage, &zero_val).unwrap();
     REQUEST_SEQNO_KEY.save(deps.storage, &zero_val).unwrap();
-    CHECKPOINT_LEN_KEY.save(deps.storage, &zero_val).unwrap();
-    REQUEST_SEQNO_KEY.save(deps.storage, &zero_val).unwrap();
+    CHECKPOINT_KEY.save(deps.storage, &checkpoint).unwrap();
     AEAD_KEY.save(deps.storage, &symmetric_key).unwrap();
-
-    // CONFIG_KEY.save(deps.storage.deref_mut(), &config).unwrap();
 
     Ok(Response::new())
 }
@@ -221,7 +149,7 @@ fn try_apply_update(
 
 fn try_submit_deposit(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
 ) -> StdResult<Response> {
 
@@ -235,163 +163,125 @@ fn try_submit_deposit(
         return Err(StdError::generic_err("No funds were sent to be deposited"));
     }
 
-    // let mut raw_amount = amount.u128();
+    //TODO save amount in contract
 
-    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
-    seqno.checked_add(Uint128::one());
-
+    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one()).unwrap();
     REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
 
-    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
-
-    let request = ReqState {
+    let request = Request {
         reqtype: ReqType::DEPOSIT,
         from: info.sender,
         to: None,
         amount: amount,
         memo: None
     };
-    req_key.save(deps.storage, &request).unwrap();
+    Request::save(deps.storage, request, seqno).unwrap();
     //TODO add event
     Ok(Response::default())
 }
 
 fn try_submit_transfer(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     to: Addr,
     amount: Uint128,
     memo: String
 ) -> StdResult<Response> {
 
-    let mut amount = Uint128::zero();
-
-    for coin in &info.funds {
-        amount += coin.amount
-    }
-
     if amount.is_zero() {
         return Err(StdError::generic_err("No funds were sent to be transfered"));
     }
+    //TODO save amount in contract
 
-    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
-    seqno.checked_add(Uint128::one());
-
+    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one()).unwrap();
     REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
 
-    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
-
-    let request = ReqState {
+    let request = Request {
         reqtype: ReqType::TRANSFER,
         from: info.sender,
         to: Some(to),
         amount: amount,
         memo: Some(memo)
     };
-    req_key.save(deps.storage, &request).unwrap();
+    Request::save(deps.storage, request, seqno).unwrap();
     //TODO add event
     Ok(Response::default())
 }
 
 fn try_submit_withdraw(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     amount: Uint128,
 ) -> StdResult<Response> {
-
-    let mut amount = Uint128::zero();
-
-    for coin in &info.funds {
-        amount += coin.amount
-    }
 
     if amount.is_zero() {
         return Err(StdError::generic_err("No funds were sent to be transfered"));
     }
 
-    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
-    seqno.checked_add(Uint128::one());
-
+    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one()).unwrap();
     REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
 
-    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
-
-    let request = ReqState {
+    let request = Request {
         reqtype: ReqType::WITHDRAW,
         from: info.sender,
         to: None,
         amount: amount,
         memo: None
     };
-    req_key.save(deps.storage, &request).unwrap();
+    Request::save(deps.storage, request, seqno).unwrap();
     Ok(Response::default())
 }
 
 fn try_commit_response(
     deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
+    _env: Env,
+    _info: MessageInfo,
     cipher: Binary,
 ) -> StdResult<Response> {
 
-    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
-    seqno.checked_add(Uint128::one());
+    let old_seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    let response = ResponseState::decrypt_response(deps.storage, cipher).unwrap();
+    if  response.seqno != old_seqno.checked_add(Uint128::one()).unwrap() {
+        return Err(StdError::generic_err("Response should processes strictly in order"));
+    }
+    REQUEST_SEQNO_KEY.save(deps.storage, &response.seqno).unwrap();
 
-    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
-
-    let amount = Uint128::one(); //TODO from cipher
-    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
-
-    let request = ReqState {
-        reqtype: ReqType::WITHDRAW,
-        from: info.sender,
-        to: None,
-        amount: amount,
-        memo: None
-    };
-    req_key.save(deps.storage, &request).unwrap();
+    let request = Request::load(deps.storage, response.seqno).unwrap();
+    if request.reqtype == ReqType::WITHDRAW {
+        // Address addr = request.from;
+        // transfer(addr, resp.amt);
+    }
+    //todo emit event
     Ok(Response::default())
 }
 
 fn try_write_checkpoint(
     deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
+    _env: Env,
+    _info: MessageInfo,
     cipher: Binary,
 ) -> StdResult<Response> {
-    let key = AEAD_KEY.load(deps.storage).unwrap();
-    let checkpoint_vec = decrypt(cipher.as_slice(), &key).unwrap();
-    let checkpoint_bin = to_binary(&checkpoint_vec).unwrap();
-    let mut new_checkpoint: CheckPoint = from_binary(&checkpoint_bin).unwrap();
+    let new_checkpoint: CheckPoint = CheckPoint::decrypt_checkpoint(deps.storage, cipher).unwrap();
+    let old_checkpoint: CheckPoint = CheckPoint::load(deps.storage).unwrap();
 
-    let mut seqno = CHECKPOINT_SEQNO_KEY.load(deps.storage).unwrap();
-
-    if seqno > new_checkpoint.seqno {
+    if old_checkpoint.seqno > new_checkpoint.seqno {
         return Err(StdError::generic_err("New Checkpoint Seq no too low"));
     }
-    CHECKPOINT_SEQNO_KEY.save(deps.storage, &new_checkpoint.seqno).unwrap();
 
-    let checkpoint_len_128: u128 = new_checkpoint.checkpoint.len().try_into().unwrap();
-    let checkpoint_len = Uint128::from(checkpoint_len_128);
-    CHECKPOINT_LEN_KEY.save(deps.storage, &checkpoint_len).unwrap();
-
-    for i in 0..new_checkpoint.checkpoint.len() {
-        let i_u128: u128 = i.try_into().unwrap();
-        let num = Uint128::from(i_u128);
-        let checkpt_key = PREFIX_CHECKPOINT_KEY.add_suffix(&num.to_be_bytes());
-        let checkpt = new_checkpoint.checkpoint.get(i).unwrap();
-        checkpt_key.save(deps.storage, &checkpt).unwrap();
-    }
-
+    CheckPoint::save(deps.storage, new_checkpoint).unwrap();
+    
     Ok(Response::default())
 }
 
 // ---------------------------------------- QUERIES --------------------------------------
 
 #[entry_point]
-pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, info: MessageInfo, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetState {
         } => qet_state(deps, env),
@@ -404,7 +294,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             seqno,
         } => get_request(deps, env, seqno),
         QueryMsg::GetCheckpoint {
-        } => get_checkpoint(deps, env)
+        } => get_checkpoint(deps, env),
+        QueryMsg::ProcessNext {
+            cipher
+        } => process_request(deps, env, info, cipher)
     }
 }
 
@@ -510,37 +403,98 @@ fn get_checkpoint(
     deps: Deps,
     env: Env
 ) -> StdResult<Binary> {
-    let mut seqno = CHECKPOINT_SEQNO_KEY.load(deps.storage).unwrap();
-    let mut checkpoint_list = Vec::new();
-    let checkpoint_len = CHECKPOINT_LEN_KEY.load(deps.storage).unwrap();
-    for i in 0..checkpoint_len.u128() {
-        let num = Uint128::from(i);
-        let checkpt_key = PREFIX_CHECKPOINT_KEY.add_suffix(&num.to_be_bytes());
-        let checkpt = checkpt_key.load(deps.storage).unwrap();
-        checkpoint_list.push(checkpt);
-    }
 
-    let mut message = CheckPoint {
-        checkpoint: checkpoint_list,
-        seqno: seqno
-    };
-    let plaintext = to_binary(&message).unwrap();
-    let entropy = env.block.random.unwrap();
-    let key = AEAD_KEY.load(deps.storage).unwrap();
+    let checkpoint = CheckPoint::load(deps.storage)?;
 
-    let mut hasher = Sha256::default();
-    hasher.update(entropy.clone().as_slice());
-    let finalized_hash = hasher.finalize();
-    let prng_seed = finalized_hash.as_slice();
-    let mut rng = ContractPrng::new(&prng_seed, entropy.as_slice());
-    let rnd_bytes = rng.rand_bytes();
-    let nonce : [u8;12] = rnd_bytes[0..12].try_into().unwrap();
-
-    let cipher = encrypt_with_nonce(&plaintext, &key, &nonce).unwrap();
+    let cipher = CheckPoint::encrypt_checkpoint(deps.storage, env, checkpoint)?;
 
     let resp_as_b64 = to_binary(&cipher).unwrap();
 
     Ok(resp_as_b64)
+}
+
+fn process_request(
+    deps: Deps,
+    env: Env,
+    info: MessageInfo,
+    cipher: Binary
+)-> StdResult<Binary> {
+    let mut checkpoint: CheckPoint = CheckPoint::decrypt_checkpoint(deps.storage, cipher).unwrap();
+    checkpoint.seqno.checked_add(Uint128::one()).unwrap();
+    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one()).unwrap();
+    let request = Request::load(deps.storage, seqno).unwrap();
+
+    let resp = match request.reqtype {
+        ReqType::DEPOSIT {} => {
+            for i in 0..checkpoint.checkpoint.len() {
+                let a = checkpoint.checkpoint.get_mut(i).unwrap();
+                let b: bool = a.address == info.sender;
+                let b_int = bool_to_uint128(b);
+                let m = request.amount.checked_mul(b_int).unwrap();
+                a.balance.checked_add(m).unwrap();
+            }
+            ResponseState {
+                seqno: seqno,
+                status: true,
+                amount: Uint128::zero(),
+                response: String::default()
+            }
+        },
+        ReqType::WITHDRAW {} => {
+            let mut balance_ok: bool = true;
+            for i in 0..checkpoint.checkpoint.len() {
+                let a = checkpoint.checkpoint.get_mut(i).unwrap();
+                let b: bool = a.address == request.from;
+                balance_ok = balance_ok && (!b || a.balance >= request.amount);
+                let b_int = bool_to_uint128(b);
+                let balance_ok_int = bool_to_uint128(balance_ok);
+                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+                a.balance.checked_sub(m).unwrap();
+            }
+            let balance_ok_int = bool_to_uint128(balance_ok);
+            ResponseState {
+                seqno: seqno,
+                status: balance_ok,
+                amount: request.amount.checked_mul(balance_ok_int).unwrap(),
+                response: String::default()
+            }
+        },
+        ReqType::TRANSFER => {
+            let mut balance_ok: bool = true;
+            for i in 0..checkpoint.checkpoint.len() {
+                let a = checkpoint.checkpoint.get_mut(i).unwrap();
+                let b: bool = a.address == request.from;
+                balance_ok = balance_ok && (!b || a.balance >= request.amount);
+                let b_int = bool_to_uint128(b);
+                let balance_ok_int = bool_to_uint128(balance_ok);
+                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+                a.balance.checked_sub(m).unwrap();
+            }
+            let balance_ok_int = bool_to_uint128(balance_ok);
+            for i in 0..checkpoint.checkpoint.len() {
+                let a = checkpoint.checkpoint.get_mut(i).unwrap();
+                let b: bool = a.address == request.to.clone().unwrap();
+                let b_int = bool_to_uint128(b);
+                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+                a.balance.checked_add(m).unwrap();
+            }
+            ResponseState {
+                seqno: seqno,
+                status: balance_ok,
+                amount: Uint128::zero(),
+                response: String::from("Transfer ok")
+            }
+        }
+    };
+
+    let resp_cipher = ResponseState::encrypt_response(deps.storage, env.clone(), resp).unwrap();
+    let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, env, checkpoint).unwrap();
+    let resp = ProcessResponseAnswer {
+        req_cipher: resp_cipher,
+        checkpoint_cipers:  chkpt_cipher
+    };
+    Ok(to_binary(&resp).unwrap())
 }
 
 fn gen_hash(counter_in: Uint128, current_hash: Binary) -> StdResult<Binary> {
@@ -589,6 +543,7 @@ mod tests {
     use cosmwasm_std::{from_binary, StdResult, Uint128};
     use crate::contract::{get_checkpoint, gen_hash, gen_mac, instantiate, query};
     use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
+    use crate::state::{CheckPoint};
 
     #[test]
     fn test_get_state() {
@@ -596,12 +551,12 @@ mod tests {
         let mut mocked_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
 
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
+        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info.clone(), InstantiateMsg {}).unwrap();
 
         let query_msg = QueryMsg::GetState {};
 
         let mocked_env = mock_env();
-        let query_resp = query(mocked_deps.as_ref(), mocked_env, query_msg).unwrap();
+        let query_resp = query(mocked_deps.as_ref(), mocked_env, mocked_info, query_msg).unwrap();
 
 
         let query_to_struct: GetStateAnswer = from_binary(&query_resp).unwrap();
@@ -615,12 +570,12 @@ mod tests {
         let mut mocked_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
 
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
+        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info.clone(), InstantiateMsg {}).unwrap();
 
         let query_msg = QueryMsg::GetState {};
 
         let mocked_env = mock_env();
-        let query_resp = query(mocked_deps.as_ref(), mocked_env, query_msg).unwrap();
+        let query_resp = query(mocked_deps.as_ref(), mocked_env, mocked_info.clone(), query_msg).unwrap();
 
         let query_as_struct: GetStateAnswer = from_binary(&query_resp).unwrap();
 
@@ -634,7 +589,7 @@ mod tests {
 
         // Try cranking the contract a few times
         let mocked_env = mock_env();
-        let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
+        let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, mocked_info.clone(), iterate_hash).unwrap();
         let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
 
         //let applyUpdate = ExecuteMsg::ApplyUpdate {
@@ -661,7 +616,7 @@ mod tests {
         //println!("test> old_mac: {:?}", old_mac);
 
         let mocked_env = mock_env();
-        let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
+        let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, mocked_info, iterate_hash).unwrap();
         assert!(true);
         //let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
 
@@ -716,27 +671,5 @@ mod tests {
         println!("{:?}", res.unwrap())
     }
 
-
-    #[test]
-	fn test_get_checkpoint() {
-        let mocked_env = mock_env();
-        let mut mocked_deps = mock_dependencies();
-        let mocked_info = mock_info("owner", &[]);
-
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
-
-        let query_msg = QueryMsg::GetCheckpoint {};
-
-        // get checkpoint
-        let mocked_env = mock_env();
-        let _checkpoint = get_checkpoint(mocked_deps.as_ref(), mocked_env).unwrap();
-        //let checkpoint: StdResult<Binary> = from_binary(&_checkpoint);
-
-        assert!(true);
-        //assert! {
-        //    checkpoint.is_ok(),
-        //    "WE FAILED TO GET A CHECKPOINT"
-        //}
-    }
 
 }
