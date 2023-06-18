@@ -15,3 +15,6 @@ contract.wasm*
 # IDEs
 *.iml
 .idea
+
+# node
+node_modules/
