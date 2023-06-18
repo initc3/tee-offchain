@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HandleAnswer",
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "handle_ex_ans"
+      ],
+      "properties": {
+        "handle_ex_ans": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "viewing_key"
+      ],
+      "properties": {
+        "viewing_key": {
+          "type": "object",
+          "required": [
+            "key"
+          ],
+          "properties": {
+            "key": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

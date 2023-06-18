@@ -15,5 +15,3 @@ contract.wasm*
 # IDEs
 *.iml
 .idea
-
-.env
