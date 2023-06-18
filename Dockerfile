@@ -12,9 +12,10 @@ WORKDIR /usr/src/tee-offchain
 
 COPY . .
 
-RUN make clean
+
 FROM dev as contract.wasm.gz
 
+RUN make clean
 RUN RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked
 RUN wasm-opt -Oz ./target/wasm32-unknown-unknown/release/*.wasm -o ./contract.wasm
 RUN cat ./contract.wasm | gzip -n -9 > ./contract.wasm.gz
