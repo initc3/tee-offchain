@@ -48,6 +48,8 @@ pub enum QueryMsg {
         old_mac: Binary,
     },
 
+    GetBalance{},
+
     GetRequest {
         seqno: Uint128
     },
@@ -81,6 +83,6 @@ pub struct GetRequestAnswer {
 
 #[cw_serde]
 pub struct ProcessResponseAnswer {
-    pub req_cipher: Binary,
-    pub checkpoint_cipers: Binary
+    pub request_cipher: Binary,
+    pub checkpoint_ciper: Binary
 }

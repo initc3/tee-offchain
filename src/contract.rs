@@ -297,7 +297,9 @@ pub fn query(deps: Deps, env: Env, info: MessageInfo, msg: QueryMsg) -> StdResul
         } => get_checkpoint(deps, env),
         QueryMsg::ProcessNext {
             cipher
-        } => process_request(deps, env, info, cipher)
+        } => process_request(deps, env, info, cipher),
+        QueryMsg::GetBalance {
+        } => get_balance(deps, env, info)
     }
 }
 
@@ -413,6 +415,24 @@ fn get_checkpoint(
     Ok(resp_as_b64)
 }
 
+fn get_balance(
+    deps: Deps,
+    _env: Env,
+    info: MessageInfo
+) -> StdResult<Binary> {
+
+    let checkpoint = CheckPoint::load(deps.storage)?;
+    let res = Uint128::zero();
+    for i in 0..checkpoint.checkpoint.len() {
+        let a = checkpoint.checkpoint.get(i).unwrap();
+        let b: bool = a.address == info.sender;
+        let b_int = bool_to_uint128(b);
+        res.checked_add(a.balance.checked_mul(b_int).unwrap()).unwrap();
+    }
+    let resp_as_b64 = to_binary(&res).unwrap();
+    Ok(resp_as_b64)
+}
+
 fn process_request(
     deps: Deps,
     env: Env,
@@ -491,8 +511,8 @@ fn process_request(
     let resp_cipher = ResponseState::encrypt_response(deps.storage, env.clone(), resp).unwrap();
     let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, env, checkpoint).unwrap();
     let resp = ProcessResponseAnswer {
-        req_cipher: resp_cipher,
-        checkpoint_cipers:  chkpt_cipher
+        request_cipher: resp_cipher,
+        checkpoint_ciper:  chkpt_cipher
     };
     Ok(to_binary(&resp).unwrap())
 }
@@ -540,10 +560,12 @@ fn gen_mac(key: Binary, data_blob: Binary) -> StdResult<Binary> {
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{from_binary, StdResult, Uint128};
-    use crate::contract::{get_checkpoint, gen_hash, gen_mac, instantiate, query};
-    use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
+    use cosmwasm_std::{from_binary, StdResult, Uint128, Coin, QueryResponse, StdError, Binary};
+    use crate::contract::{get_checkpoint, gen_hash, gen_mac, instantiate, query, execute};
+    use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, ProcessResponseAnswer};
     use crate::state::{CheckPoint};
+    // use std::any::Any;
+    // use cosmwasm_std::testing::*;
 
     #[test]
     fn test_get_state() {
@@ -551,7 +573,7 @@ mod tests {
         let mut mocked_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
 
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info.clone(), InstantiateMsg {}).unwrap();
+        let _resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info.clone(), InstantiateMsg {}).unwrap();
 
         let query_msg = QueryMsg::GetState {};
 
@@ -570,7 +592,7 @@ mod tests {
         let mut mocked_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
 
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info.clone(), InstantiateMsg {}).unwrap();
+        let _resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info.clone(), InstantiateMsg {}).unwrap();
 
         let query_msg = QueryMsg::GetState {};
 
@@ -616,7 +638,7 @@ mod tests {
         //println!("test> old_mac: {:?}", old_mac);
 
         let mocked_env = mock_env();
-        let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, mocked_info, iterate_hash).unwrap();
+        let _iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, mocked_info, iterate_hash).unwrap();
         assert!(true);
         //let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
 
@@ -631,8 +653,8 @@ mod tests {
     #[test]
     fn test_gen_hash() {
         let mock_env = mock_env();
-        let mock_deps = mock_dependencies();
-        let mock_info = mock_info("owner", &[]);
+        let _mock_deps = mock_dependencies();
+        let _mock_info = mock_info("owner", &[]);
 
         let entropy = mock_env.block.random.unwrap();
         let initial_counter = Uint128::zero();
@@ -650,8 +672,8 @@ mod tests {
     #[test]
     fn test_gen_mac() {
         let mock_env = mock_env();
-        let mock_deps = mock_dependencies();
-        let mock_info = mock_info("owner", &[]);
+        let _mock_deps = mock_dependencies();
+        let _mock_info = mock_info("owner", &[]);
 
         // grab entropy from mock env
         let entropy = mock_env.block.random.unwrap();
@@ -671,5 +693,111 @@ mod tests {
         println!("{:?}", res.unwrap())
     }
 
+    #[test]
+    fn test_deposit_no_funds() {
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert!{
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
+        let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
+        let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), mocked_info.clone(), get_checkpoint_msg);
+        assert!{
+            get_checkpoint_resp.is_ok(),
+            "Get Checkpoint Failed"
+        }
+
+        let mock_depositer = mock_info("depositer", &[]);
+        let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
+        let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
+        assert!{
+            request_deposit_resp == Err(StdError::generic_err("No funds were sent to be deposited")),
+            "Did not fail with insufficient funds"
+        }
+
+        let get_balance_msg = QueryMsg::GetBalance{};
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), mock_depositer, get_balance_msg);
+        assert!{
+            get_checkpoint_resp.is_ok(),
+            "Get Balance Failed"
+        }
+        let balance: Uint128 = from_binary(&get_balance_resp.unwrap()).unwrap();
+        assert!(
+            Uint128::zero() == balance,
+            "Balance should be zero"
+        );
+    }
+
+    #[test]
+    fn test_deposit() {
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert! {
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
+        let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
+        let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), mocked_info.clone(), get_checkpoint_msg);
+        assert! {
+            get_checkpoint_resp.is_ok(),
+            "Get Checkpoint Failed"
+        }
+
+        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
+
+        let mock_depositer = mock_info("depositer", &[Coin {
+            denom: "uscrt".to_string(),
+            amount: Uint128::new(1000),
+        }]);
+        let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
+        let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
+        assert! {
+            request_deposit_resp.is_ok(),
+            "Submit Deposit Failed"
+        } 
+
+        let get_balance_msg = QueryMsg::GetBalance{};
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), mock_depositer.clone(), get_balance_msg);
+        assert!{
+            get_balance_resp.is_ok(),
+            "Get Balance Failed"
+        }
+        let balance: Uint128 = from_binary(&get_balance_resp.unwrap()).unwrap();
+        // println!("balance {:?}", balance);
+        assert!(
+            Uint128::zero() == balance,
+            "Balance should be 0 before Response Commit"
+        );
+
+        let process_next_msg = QueryMsg::ProcessNext{ cipher: checkpoint_cipher };
+        let process_next_resp = query(mock_deps.as_ref(), mocked_env.clone(), mocked_info.clone(), process_next_msg);
+        assert!{
+            process_next_resp.is_ok(),
+            "Process Next Failed"
+        }
+
+        let process_answer: ProcessResponseAnswer = from_binary(&process_next_resp.unwrap()).unwrap();
+        let commit_response_msg = ExecuteMsg::CommitResponse{cipher: process_answer.request_cipher};
+        let commit_response_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg);
+        assert! {
+            commit_response_resp.is_ok(),
+            "Commit Response Failed"
+        } 
+
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_ciper};
+        let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
+        assert! {
+            write_checkpoint_resp.is_ok(),
+            "Write Checkpoint Failed"
+        }
+
+    }
 
 }
