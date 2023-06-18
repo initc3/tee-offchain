@@ -70,15 +70,18 @@ pub fn decrypt(cipheriv: &[u8], key: &SymmetricKey) -> Result<Vec<u8>, StdError>
 
     Ok(decrypted_data.to_vec())
 }
-
-pub fn get_nonce(env: Env) -> IV {
+pub fn get_prng(env: Env) -> ContractPrng {
     let entropy = env.block.random.unwrap();
     let mut hasher = Sha256::default();
     hasher.update(entropy.clone().as_slice());
     let finalized_hash = hasher.finalize();
     let prng_seed = finalized_hash.as_slice();
-    let mut rng = ContractPrng::new(&prng_seed, entropy.as_slice());
-    let rnd_bytes = rng.rand_bytes();
+    let rng = ContractPrng::new(&prng_seed, entropy.as_slice());
+    return rng;
+}
+
+pub fn get_nonce(mut prng: ContractPrng) -> IV {
+    let rnd_bytes = prng.rand_bytes();
     let nonce : [u8;12] = rnd_bytes[0..12].try_into().unwrap();
     return nonce;
 }
