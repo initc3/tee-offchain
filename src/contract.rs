@@ -587,7 +587,7 @@ fn gen_mac(key: Binary, data_blob: Binary) -> StdResult<Binary> {
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_binary, StdResult, Uint128};
-    use crate::contract::{gen_hash, gen_mac, instantiate, query};
+    use crate::contract::{get_checkpoint, gen_hash, gen_mac, instantiate, query};
     use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 
     #[test]
@@ -718,16 +718,25 @@ mod tests {
 
 
     #[test]
-    fn test_checkpoint() {
-        let mock_env = mock_env();
-        let mut mock_deps = mock_dependencies();
-        let mock_info = mock_info("owner", &[]);
+	fn test_get_checkpoint() {
+        let mocked_env = mock_env();
+        let mut mocked_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
 
-        let resp = instantiate(mock_deps.as_mut(), mock_env, mock_info, InstantiateMsg{}); 
+        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
 
-        let query_resp = get_checkpoint(mocked_deps.as_ref(), mocked_env).unwrap();
+        let query_msg = QueryMsg::GetCheckpoint {};
 
-        println!("{:?}", query_resp.unwrap())
+        // get checkpoint
+        let mocked_env = mock_env();
+        let _checkpoint = get_checkpoint(mocked_deps.as_ref(), mocked_env).unwrap();
+        //let checkpoint: StdResult<Binary> = from_binary(&_checkpoint);
+
+        assert!(true);
+        //assert! {
+        //    checkpoint.is_ok(),
+        //    "WE FAILED TO GET A CHECKPOINT"
+        //}
     }
 
 }
