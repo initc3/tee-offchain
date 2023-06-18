@@ -17,3 +17,5 @@ contract.wasm*
 .idea
 
 .env
+
+node_modules/
