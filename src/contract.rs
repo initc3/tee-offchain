@@ -542,6 +542,7 @@ fn process_request(
             }
         }
     };
+    checkpoint.seqno = checkpoint.seqno.checked_add(Uint128::one()).unwrap();
     println!("process_request requrning checkpoint {:?}", checkpoint);
 
     let resp_cipher = ResponseState::encrypt_response(deps.storage, env.clone(), resp).unwrap();
