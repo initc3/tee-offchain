@@ -19,6 +19,16 @@ jobs:
           components: rustfmt, clippy
       - run: cargo test
   build-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@1.63
+        with:
+          target: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - run: RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked
+  build-contract-in-docker:
     env:
       IMAGE_NAME: initc3/tee-offchain
     runs-on: ubuntu-latest
