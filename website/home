@@ -1,0 +1,181 @@
+
+<!doctype html>
+<html lang="en" data-n-head="%7B%22lang%22:%7B%221%22:%22en%22%7D%7D">
+<head>
+<title>Secret Tunnel</title>
+<meta data-n-head="1" charset="utf-8">
+<meta data-n-head="1" name="viewport" content="width=device-width,initial-scale=1">
+<meta data-n-head="1" data-hid="description" name="description" content="Secret Tunnel is a bridge between Secret Network and Axelar that allows automatic wrapping of assets with privacy-preserving tokens">
+<meta data-n-head="1" name="format-detection" content="telephone=no">
+<link data-n-head="1" rel="icon" type="image/x-icon" href="/favicon.jpg">
+<link data-n-head="1" rel="preload" as="font" href="../assets/fonts/BalsamiqSans-Regular-English-Only.woff2">
+<link data-n-head="1" rel="preload" as="font" href="../assets/fonts/Banana.woff2">
+<link data-n-head="1" rel="preload" as="font" href="../assets/fonts/Rocky Rock.woff2"><link rel="preload" href="/_nuxt/056ce4e.js" as="script">
+<link rel="preload" href="/_nuxt/cb4e26d.js" as="script">
+<link rel="preload" href="/_nuxt/17bf19f.js" as="script">
+<link rel="preload" href="/_nuxt/f79d19e.js" as="script">
+</head>
+
+<script type="text/ts"></script>
+
+<script lang="ts"></script>
+
+
+
+import { SecretNetworkClient, type Permit } from 'secretjs';
+import { writable, get } from 'svelte/store';
+export async function tryInitKeplr() {
+    if (typeof get(secretClient) === 'undefined') {
+        if (browser) {
+            if (typeof window.keplr !== 'undefined') {
+                keplr.set(window.keplr);
+                keplrInstalled.set(true);
+            } else if(typeof window.fina !== 'undefined') {
+                keplr.set(window.fina);
+                keplrInstalled.set(true);
+            } else {
+                keplrInstalled.set(false);
+            }
+            await enableKeplr(async (address) => {
+                const oSigner = get(offlineSigner) ?? await get(keplr).getOfflineSignerOnlyAmino(chainId);
+                const enigmaUtils = await window.getEnigmaUtils(chainId);
+                const sClient = new SecretNetworkClient({
+                    url: secretGrpcUrl,
+                    chainId: chainId,
+                    wallet: oSigner,
+                    walletAddress: address,
+                    encryptionUtils: enigmaUtils
+                });
+                secretClient.set(sClient)
+            });
+        }
+    }
+}
+
+export async function enableKeplr(addressCallback = null) {
+    try {
+        await get(keplr).enable(chainId);
+        offlineSigner.set(get(keplr).getOfflineSignerOnlyAmino(chainId));
+        const accounts = await get(offlineSigner).getAccounts();
+        const acc = accounts.filter((item) => {
+            const addr = item.address;
+            return addr.slice(0, 6) == 'secret';
+        })[0]
+        walletAddress.set(acc.address);
+        if (addressCallback != null) {
+            await addressCallback(get(walletAddress));
+        }
+        keplrConnected.set(true);
+        queryPermits.set(JSON.parse(localStorage.getItem('read_permits_'+acc.address)) ?? null)
+    } catch (e) {
+        console.log(e);
+    }
+}
+
+export async function ensureKeplr() {
+    if (typeof get(secretClient) === 'undefined' || typeof get(keplr) === 'undefined') {
+        await tryInitKeplr();
+        if (chainId == 'pulsar-2' && typeof get(keplr) !== 'undefined') {
+            await get(keplr).experimentalSuggestChain({
+                chainId: "pulsar-2", 
+                chainName: "Secret Pulsar", 
+                rpc: "https://pulsar-2.api.trivium.network:26657", 
+                rest: "https://pulsar-2.api.trivium.network:1317", 
+                bip44: { coinType: 529 }, 
+                coinType: 529, 
+                stakeCurrency: { 
+                    coinDenom: "SCRT", 
+                    coinMinimalDenom: "uscrt", 
+                    coinDecimals: 6 
+                }, 
+                bech32Config: { 
+                    bech32PrefixAccAddr: "secret", 
+                    bech32PrefixAccPub: "secretpub", 
+                    bech32PrefixValAddr: "secretvaloper", 
+                    bech32PrefixValPub: "secretvaloperpub", 
+                    bech32PrefixConsAddr: "secretvalcons", 
+                    bech32PrefixConsPub: "secretvalconspub" 
+                }, 
+                currencies: [{ coinDenom: "SCRT", coinMinimalDenom: "uscrt", coinDecimals: 6 }], 
+                feeCurrencies: [{ coinDenom: "SCRT", coinMinimalDenom: "uscrt", coinDecimals: 6 }], 
+                // gasPriceStep: { low: .1, average: .25, high: .4 },
+                features: ["secretwasm", "ibc-transfer", "ibc-go"] 
+            });
+        }
+        if (chainId == 'secretdev-1' && typeof get(keplr) !== 'undefined') {
+            await get(keplr).experimentalSuggestChain({
+                chainId: "secretdev-1",
+                chainName: "LocalSecret",
+                rpc: "http://localhost:26657",
+                rest: "http://localhost:1317",
+                bip44: {
+                    coinType: 529,
+                },
+                bech32Config: {
+                    bech32PrefixAccAddr: "secret",
+                    bech32PrefixAccPub: "secretpub",
+                    bech32PrefixValAddr: "secretvaloper",
+                    bech32PrefixValPub: "secretvaloperpub",
+                    bech32PrefixConsAddr: "secretvalcons",
+                    bech32PrefixConsPub: "secretvalconspub",
+                },
+                currencies: [
+                    {
+                    coinDenom: "SCRT",
+                    coinMinimalDenom: "uscrt",
+                    coinDecimals: 6,
+                    coinGeckoId: "secret",
+                    },
+                ],
+                feeCurrencies: [
+                    {
+                    coinDenom: "SCRT",
+                    coinMinimalDenom: "uscrt",
+                    coinDecimals: 6,
+                    coinGeckoId: "secret",
+                    },
+                ],
+                stakeCurrency: {
+                    coinDenom: "SCRT",
+                    coinMinimalDenom: "uscrt",
+                    coinDecimals: 6,
+                    coinGeckoId: "secret",
+                },
+                coinType: 529,
+                // gasPriceStep: {
+                //     low: 0.1,
+                //     average: 0.25,
+                //     high: 1,
+                // },
+                features: ["secretwasm", "stargate", "ibc-transfer", "ibc-go"],
+            });    
+        }
+    }
+}
+
+<main>
+
+	</main>
+
+
+
+<style type="text/postcss"?>
+	:root {
+	--font-family:Helvetica, sans-serif;
+	--link-color: #00182;
+	--text-color: #333;
+
+	}
+
+	main {
+		font-family: var(--font-family);
+		color: var(--text-color);
+
+		& a {
+			color: var(--link-color);
+		}
+
+	}
+
+</style>
+
