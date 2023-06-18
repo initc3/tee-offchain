@@ -19,7 +19,6 @@ unit-test:
 .PHONY: build _build
 build: _build compress-wasm
 _build:
-	#RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --features="debug-print"
 	RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
 
 # This is a build suitable for uploading to mainnet.
