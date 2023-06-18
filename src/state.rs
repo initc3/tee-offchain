@@ -101,17 +101,25 @@ impl CheckPoint {
 
     pub fn decrypt_checkpoint(store: &dyn Storage, cipher: Binary) -> StdResult<CheckPoint> {
         let key = AEAD_KEY.load(store).unwrap();
+        println!("decrypt_checkpoint key {:?}", key);
+        println!("decrypt_checkpoint cipher_bin {:?}", cipher);
         let checkpoint_vec = decrypt(cipher.as_slice(), &key).unwrap();
         let checkpoint_bin = to_binary(&checkpoint_vec).unwrap();
-        from_binary(&checkpoint_bin)
+        let checkpoint: CheckPoint = from_binary(&checkpoint_bin).unwrap();
+        println!("decrypt_checkpoint checkpoint {:?}", checkpoint);
+        return Ok(checkpoint);
     }
 
     pub fn encrypt_checkpoint(store: &dyn Storage, env: Env, checkpoint: CheckPoint) -> StdResult<Binary> {
         let key = AEAD_KEY.load(store).unwrap();
+        println!("encrypt_checkpoint key {:?}", key);
         let plaintext = to_binary(&checkpoint).unwrap();
         let nonce = get_nonce(env);
+        println!("encrypt_checkpoint nonce {:?}", nonce);
         let cipher = encrypt_with_nonce(&plaintext, &key, &nonce).unwrap();
+        println!("encrypt_checkpoint cipher {:?}", cipher);
         let checkpoint_bin = to_binary(&cipher);
+        println!("encrypt_checkpoint cipher_bin {:?}", checkpoint_bin);
         return checkpoint_bin;
     }
 }
