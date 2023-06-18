@@ -14,19 +14,20 @@ async function process(checkpoint, nonce, token, account, seq, responsesLen) {
         //console.log(result);
         [checkpoint, nonce, response, responseNonce] = result;
         if (i > responsesLen) {
-            console.log("Committing action...");
+            console.log("    Committing action...");
             let commitResult = await token.connect(account).commitResponse(response, responseNonce);
             let receipt = await commitResult.wait();
-            console.log(receipt);
             if (receipt.status == 0) {
                 console.log("Commit transaction reverted. That means we're done");
                 break;
+            } else {
+                console.log("Commit was a SUCCESS! Tx: " + commitResult.hash);
             }
         } else {
             console.log("Response already computed for this index...");
         }
     } catch (e) {
-        console.log("Done", e);
+        console.log("Done! All available actions committed.");
         break;
     }
   }
@@ -38,7 +39,7 @@ async function process(checkpoint, nonce, token, account, seq, responsesLen) {
 
 async function main() {
   let [owner, owner2] = await ethers.getSigners();
-  let token = await ethers.getContractAt("VeiledToken", "0x06a46c52f88d870A2DB9b02f6EC5d7924b8C5Ced", owner);
+  let token = await ethers.getContractAt("VeiledToken", "0x4CbcD6D36CdAa5ee951fa6e6E6Baa6b04bdE5161", owner);
   console.log(`Accessing VeiledToken at ${token.target}`);
   token = await ethers.getContractAt("VeiledToken", token.target, owner);
   let checkpoint = await token.getCheckpoint();
@@ -64,7 +65,9 @@ async function main() {
   //let responsesLen = 3n;
   //console.log(checkpointSeq + 1 - responsesLen, "to go");
   
-  console.log(`Now let's transfer some of this stuff. Transferring ${ethers.formatEther(transferAmt)} ROSE to some other account...`);
+  console.log("\n");
+  console.log(`Now let's transfer some of this stuff. Transferring ${ethers.formatEther(transferAmt)} ROSE to some other account...\n`);
+  await delay(2000);
   await token.connect(owner).requestTransfer(owner2.address, transferAmt, "0x523322ef8180a10bf2c8e6f1681bb55fab82570dc98312c010a92335be700000");
   await delay(5000);
   
@@ -72,15 +75,21 @@ async function main() {
   [checkpoint, nonce] = await token.getCheckpoint();
   responsesLen = (await token.getResponses()).length;
   checkpointSeq = await token.checkpointSeq();
+  console.log("Responses:", responsesLen, "Checkpoint seq:", checkpointSeq);
   await process(checkpoint, nonce, token, owner, checkpointSeq, responsesLen);
   
-  console.log(`Creating a withdraw request for account 2...`);
+  console.log("\n");
+  console.log(`Creating a withdraw request for ${ethers.formatEther(transferAmt)} ROSE using account 2...\n`);
+  await delay(2000);
   await token.connect(owner2).requestWithdraw(transferAmt);
   
   [checkpoint, nonce] = await token.getCheckpoint();
   responsesLen = (await token.getResponses()).length;
   checkpointSeq = await token.checkpointSeq();
+  console.log("Responses:", responsesLen, "Checkpoint seq:", checkpointSeq);
   await process(checkpoint, nonce, token, owner2, checkpointSeq, responsesLen);
+  
+  console.log("\nCOMPLETE!");
 }
 
 // We recommend this pattern to be able to use async/await everywhere
