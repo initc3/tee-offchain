@@ -13,26 +13,26 @@ pub enum ExecuteMsg {
         current_mac: Binary
     },
 
-    SubmitDeposit {        
-    },
+    //SubmitDeposit {
+    //},
 
-    SubmitTransfer {
-        to: Addr,
-        amount: Uint128,
-        memo: String,
-    },
+    //SubmitTransfer {
+    //    to: Addr,
+    //    amount: Uint128,
+    //    memo: String,
+    //},
 
-    SubmitWithdraw {
-        amount: Uint128
-    },
+    //SubmitWithdraw {
+    //    amount: Uint128
+    //},
 
-    CommitResponse {
-        cipher: Binary
-    },
+    //CommitResponse {
+    //    cipher: Binary
+    //},
 
-    WriteCheckpoint {
-        cipher: Binary       
-    }
+    //WriteCheckpoint {
+    //    cipher: Binary
+    //}
 
 }
 
@@ -48,9 +48,9 @@ pub enum QueryMsg {
         old_mac: Binary,
     },
 
-    GetRequest {
-        seqno: Uint128
-    },
+    //GetRequest {
+    //    seqno: Uint128
+    //},
 
     GetCheckpoint {
     }

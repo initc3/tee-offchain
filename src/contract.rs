@@ -3,7 +3,7 @@ use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use schemars::_serde_json::to_string;
 
-use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
+use crate::msg::{ExecuteMsg, GetCheckpointAnswer, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 use crate::state::{State, ReqType, ReqState, CONFIG_KEY, REQUEST_SEQNO_KEY, PREFIX_REQUESTS_KEY, CHECKPOINT_SEQNO_KEY};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -60,40 +60,40 @@ pub fn execute(
                 new_hash,
                 current_mac,
             ),
-        ExecuteMsg::SubmitDeposit {
-        } => try_submit_deposit(
-                deps,
-                env,
-                info,
-            ),
-        ExecuteMsg::SubmitTransfer {
-            to,
-            amount,
-            memo
-        } => try_submit_transfer(
-                deps,
-                env,
-                info,
-                to,
-                amount,
-                memo
-            ),
-        ExecuteMsg::SubmitWithdraw {
-            amount
-        } => try_submit_withdraw(
-                deps,
-                env,
-                info,
-                amount
-            ),
-        ExecuteMsg::CommitResponse {
-            cipher
-        } => try_commit_response(
-                deps,
-                env,
-                info,
-                cipher
-            )
+        //ExecuteMsg::SubmitDeposit {
+        //} => try_submit_deposit(
+        //        deps,
+        //        env,
+        //        info,
+        //    ),
+        //ExecuteMsg::SubmitTransfer {
+        //    to,
+        //    amount,
+        //    memo
+        //} => try_submit_transfer(
+        //        deps,
+        //        env,
+        //        info,
+        //        to,
+        //        amount,
+        //        memo
+        //    ),
+        //ExecuteMsg::SubmitWithdraw {
+        //    amount
+        //} => try_submit_withdraw(
+        //        deps,
+        //        env,
+        //        info,
+        //        amount
+        //    ),
+        //ExecuteMsg::CommitResponse {
+        //    cipher
+        //} => try_commit_response(
+        //        deps,
+        //        env,
+        //        info,
+        //        cipher
+        //    )
     };
     res
 }
@@ -247,6 +247,7 @@ fn try_submit_withdraw(
     Ok(Response::default())
 }
 
+/*
 fn try_commit_response(
     deps: DepsMut,
     env: Env,
@@ -271,7 +272,7 @@ fn try_commit_response(
     req_key.save(deps.storage, &request).unwrap();
     Ok(Response::default())
 }
-
+*/
 
 // ---------------------------------------- QUERIES --------------------------------------
 
@@ -285,11 +286,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             current_hash,
             old_mac,
         } => iterate_hash(deps, _env, counter, current_hash, old_mac),
-        QueryMsg::GetRequest {
-            seqno,
-        } => get_request(deps, env, seqno),
+        //QueryMsg::GetRequest {
+        //    seqno,
+        //} => get_request(deps, env, seqno),
         QueryMsg::GetCheckpoint {
-        } => get_checkpoint(deps, env)
+        } => get_checkpoint(deps, _env)
     }
 }
 
@@ -370,7 +371,7 @@ fn iterate_hash(
     Ok(resp_as_b64)
 }
 
-
+/*
 fn get_request(
     deps: Deps,
     _env: Env,
@@ -390,6 +391,7 @@ fn get_request(
     // Return that out!
     Ok(resp_as_b64)
 }
+*/
 
 fn get_checkpoint(
     deps: Deps,
@@ -401,7 +403,7 @@ fn get_checkpoint(
     // let cipher = aead::cipher.encrypt(nonce, plaintext); TODO
     let resp = GetCheckpointAnswer {
         cipher: cipher
-    };  
+    };
 
     let resp_as_b64 = to_binary(&resp).unwrap();
 
@@ -452,8 +454,8 @@ fn gen_mac(key: Binary, data_blob: Binary) -> StdResult<Binary> {
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_binary, StdResult, Uint128};
-    use crate::contract::{gen_hash, gen_mac, instantiate, query};
-    use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
+    use crate::contract::{gen_hash, gen_mac, get_checkpoint, instantiate, query};
+    use crate::msg::{ExecuteMsg, GetCheckpointAnswer, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 
     #[test]
     fn test_get_state() {
@@ -527,15 +529,14 @@ mod tests {
 
         let mocked_env = mock_env();
         let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
-        assert!(true);
-        //let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
+        let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
 
-        //assert! {
-        //    iterate_hash_resp.is_ok(),
-        //    "WE FAILED TO UNBASE64 TO THE STRUCT"
-        //}
+        assert! {
+            iterate_hash_resp.is_ok(),
+            "WE FAILED TO UNBASE64 TO THE STRUCT"
+        }
 
-        //println!("{:?}", iterate_hash_resp.unwrap())
+        println!("{:?}", iterate_hash_resp.unwrap())
     }
 
     #[test]
@@ -579,5 +580,29 @@ mod tests {
         }
 
         println!("{:?}", res.unwrap())
+    }
+
+    #[test]
+    fn test_get_checkpoint() {
+        let mocked_env = mock_env();
+        let mut mocked_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+
+        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
+
+        let query_msg = QueryMsg::GetCheckpoint {};
+
+        // get checkpoint
+        let mocked_env = mock_env();
+        let _checkpoint = get_checkpoint(mocked_deps.as_ref(), mocked_env).unwrap();
+        let checkpoint: StdResult<GetCheckpointAnswer> = from_binary(&_checkpoint);
+
+        assert!(true);
+        assert! {
+            checkpoint.is_ok(),
+            "WE FAILED TO GET A CHECKPOINT"
+        }
+
+        //println!("{:?}", checkpoint.unwrap())
     }
 }
