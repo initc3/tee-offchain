@@ -66,10 +66,12 @@ pub fn decrypt(cipheriv: &[u8], key: &SymmetricKey) -> Result<Vec<u8>, StdError>
             return Err(StdError::generic_err("Decryption Error"));
         }
     };
-    // let decrypted_data = decrypted_data.map_err(|_| CryptoError::DecryptionError)?;
-
-    Ok(decrypted_data.to_vec())
+    let tag_size = AES_MODE.tag_len();
+    let mut decrypted_vec = decrypted_data.to_vec();
+    decrypted_vec.truncate(decrypted_vec.len() - tag_size);
+    Ok(decrypted_vec)
 }
+
 pub fn get_prng(env: Env) -> ContractPrng {
     let entropy = env.block.random.unwrap();
     let mut hasher = Sha256::default();
