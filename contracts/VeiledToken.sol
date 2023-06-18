@@ -35,7 +35,7 @@ contract VeiledToken {
     bytes32 key;
     
     // Checkpoint public state
-    AccountState[] public checkpoint;
+    AccountState[] checkpoint;
     uint256 public checkpointSeq;
     
     // List of pending commands
@@ -59,6 +59,10 @@ contract VeiledToken {
     
     function getRequest(uint256 seqNum) public view returns (RequestType, address) {
         return (requests[seqNum].rtype, requests[seqNum].from);
+    }
+    
+    function getResponses() public view returns (Response[] memory) {
+        return responses;
     }
     
     /*

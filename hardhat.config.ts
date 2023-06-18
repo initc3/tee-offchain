@@ -3,12 +3,19 @@ import "@nomicfoundation/hardhat-toolbox";
 import "@oasisprotocol/sapphire-hardhat";
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.18",
+  solidity: {
+    version: "0.8.18",
+    optimizer: {
+      enabled: true,
+      runs: 200,
+    }
+  },
   networks: {
     sapphire_testnet: {
       url: "https://testnet.sapphire.oasis.dev",
       accounts: process.env.PRIVATE_KEY
-        ? [process.env.PRIVATE_KEY]
+        ? [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY2]
+        //0xaEad73A6E2fA0ffD71a285849031486f4004B0EC
         : [],
       chainId: 0x5aff,
     },
