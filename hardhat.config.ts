@@ -1,15 +1,24 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
+import "@oasisprotocol/sapphire-hardhat";
 
 const config: HardhatUserConfig = {
   solidity: "0.8.18",
   networks: {
-    local: {
-      url: "http://localhost:8545",
-      // 0x3AA6a13b19f111C2925850253e86548164477248
-      accounts: ["0xdf1d2db3bf5b6f637b0db2f2076d6eca96d3a8da29f4f31cbb6ae262d96f26c9"],
-    }
-  }
+    sapphire_testnet: {
+      url: "https://testnet.sapphire.oasis.dev",
+      accounts: process.env.PRIVATE_KEY
+        ? [process.env.PRIVATE_KEY]
+        : [],
+      chainId: 0x5aff,
+    },
+    dev: {
+      url: "http://127.0.0.1:8545",
+      // 0x72A6CF1837105827077250171974056B40377488
+      accounts: ["0x519028d411cec86054c9c35903928eed740063336594f1b3b076fce119238f6a"],
+      chainId: 0x5afd,
+    },
+  },
 };
 
 export default config;

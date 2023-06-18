@@ -1,9 +1,9 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const token = await ethers.deployContract("VeiledToken");
+  const token = await ethers.deployContract("OffchainHashMachine");
   await token.waitForDeployment();
-  console.log("Token deployed");
+  console.log("Hash machine deployed");
 }
 
 // We recommend this pattern to be able to use async/await everywhere
