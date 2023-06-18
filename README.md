@@ -54,7 +54,8 @@ The merging of the block in a blockchain is achieved via a consensus protocol,
 whereas in collaborative software development it is achieved via a combination
 of automated processes such as continous integration, and code reviews by humans.
 **Since humans are involved, you can think of it like a sport team or a music band,
-with whom you are playing.**
+with whom you are playing. The goal is to win, to make cool music, to write cool software.
+Be cool and work with your teammates.**
 
 Will very loosely attempt to follow ZeroMQ's RFC 42/C4:
 the [Collective Code Construction Contract][c4].
