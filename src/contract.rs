@@ -165,8 +165,6 @@ fn try_submit_deposit(
         return Err(StdError::generic_err("No funds were sent to be deposited"));
     }
 
-    //TODO save amount in contract
-
     let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
 
     let request = Request {
@@ -255,11 +253,11 @@ fn try_commit_response(
     let req_len = REQUEST_LEN_KEY.load(deps.storage).unwrap();
 
     let response = ResponseState::decrypt_response(deps.storage, cipher).unwrap();
-    println!("try_commit_response seqno {:?} req_seqno {:?}", response.seqno, seqno);
+    // println!("try_commit_response seqno {:?} req_seqno {:?}", response.seqno, seqno);
     if  response.seqno != seqno {
         return Err(StdError::generic_err("Response should processes strictly in order"));
     }
-    println!("try_commit_response response.seqno {:?} < req_len {:?}", response.seqno, req_len);
+    // println!("try_commit_response response.seqno {:?} < req_len {:?}", response.seqno, req_len);
     if  response.seqno >= req_len {
         return Err(StdError::generic_err("Response seqno less than number of requests"));
     }
@@ -449,7 +447,7 @@ fn get_balance(
 ) -> StdResult<Binary> {
 
     let checkpoint = CheckPoint::load(deps.storage)?;
-    println!("get_balance checkpoint {:?}", checkpoint);
+    // println!("get_balance checkpoint {:?}", checkpoint);
     let mut res = Uint128::zero();
     for i in 0..checkpoint.checkpoint.len() {
         let a = checkpoint.checkpoint.get(i).unwrap();
@@ -1033,7 +1031,8 @@ mod tests {
             "Get Balance Failed"
         }
         let balance: Uint128 = from_binary(&get_balance_resp.unwrap()).unwrap();
-        // println!("balance {:?}", balance);
+        println!("balance of depositor1 BEFORE COMMIT DEPOSIT {:?}", balance);
+
         assert!(
             Uint128::zero() == balance,
             "Balance should be 0 before Response Commit"
@@ -1068,7 +1067,7 @@ mod tests {
             "Get Balance Failed"
         }
         let balance: Uint128 = from_binary(&get_balance_resp2.unwrap()).unwrap();
-        println!("balance {:?}", balance);
+        println!("balance of depositor2 BEFORE COMMIT DEPOSIT {:?}", balance);
         assert!(
             Uint128::new(1000) == balance,
             "Balance should be 1000 after Response Commit"
@@ -1087,7 +1086,7 @@ mod tests {
             "Get Balance Failed"
         }
         let balance3: Uint128 = from_binary(&get_balance_resp3.unwrap()).unwrap();
-        println!("balance {:?}", balance3);
+        println!("balance of depositor1 AFTER COMMIT DEPOSIT {:?}", balance3);
         assert!(
             Uint128::new(1000) == balance3,
             "Balance should still be 1000 before Response Commit"
@@ -1128,7 +1127,7 @@ mod tests {
             "Get Balance Failed"
         }
         let balance4: Uint128 = from_binary(&get_balance_resp4.unwrap()).unwrap();
-        println!("balance {:?}", balance4);
+        println!("balance of depositor1 AFTER COMMIT WITHDRAW {:?}", balance4);
         assert!(
             Uint128::new(500) == balance4,
             "Balance should still be 500 after Response Commit"
@@ -1171,7 +1170,7 @@ mod tests {
             "Get Balance Failed"
         }
         let balance: Uint128 = from_binary(&get_balance_resp.unwrap()).unwrap();
-        // println!("balance {:?}", balance);
+        println!("balance of depositor1 BEFORE COMMIT DEPOSIT {:?}", balance);
         assert!(
             Uint128::zero() == balance,
             "Balance should be 0 before Response Commit"
@@ -1195,7 +1194,7 @@ mod tests {
             "Get 2nd Balance Failed"
         }
         let balance2: Uint128 = from_binary(&get_balance_resp2.unwrap()).unwrap();
-        // println!("balance {:?}", balance);
+        println!("balance of depositor2 BEFORE COMMIT DEPOSIT {:?}", balance2);
         assert!(
             Uint128::zero() == balance2,
             "Balance should be 0 before Response Commit"
@@ -1257,7 +1256,8 @@ mod tests {
             "Get Balance Failed"
         }
         let balance: Uint128 = from_binary(&get_balance_resp3.unwrap()).unwrap();
-        println!("balance {:?}", balance);
+        println!("balance of depositor1 AFTER COMMIT DEPOSIT {:?}", balance);
+
         assert!(
             Uint128::new(1000) == balance,
             "Balance should be 1000 after Response Commit"
@@ -1270,7 +1270,7 @@ mod tests {
             "Get Balance Failed"
         }
         let balance2: Uint128 = from_binary(&get_balance_resp4.unwrap()).unwrap();
-        println!("balance {:?}", balance2);
+        println!("balance of depositor2 AFTER COMMIT DEPOSIT {:?}", balance2);
         assert!(
             Uint128::new(2000) == balance2,
             "Balance should be 2000 after Response Commit"
@@ -1292,7 +1292,8 @@ mod tests {
             "Get 3rd Balance Failed"
         }
         let balance3: Uint128 = from_binary(&get_balance_resp3.unwrap()).unwrap();
-        println!("balance {:?}", balance3);
+        // println!("balance of depositor1 {:?}", balance3);
+
         assert!(
             Uint128::new(1000) == balance3,
             "Balance should same before Response Commit"
@@ -1306,7 +1307,7 @@ mod tests {
             "Get 4th Balance Failed"
         }
         let balance4: Uint128 = from_binary(&get_balance_resp4.unwrap()).unwrap();
-        println!("balance {:?}", balance4);
+        // println!("balance of depositor2 {:?}", balance4);
         assert!(
             Uint128::new(2000) == balance4,
             "Balance should same before Response Commit"
@@ -1350,7 +1351,8 @@ mod tests {
             "Get 5th Balance Failed"
         }
         let balance5: Uint128 = from_binary(&get_balance_resp5.unwrap()).unwrap();
-        println!("balance {:?}", balance5);
+        println!("balance of depositor1 AFTER COMMIT TRANSFER {:?}", balance5);
+
         assert!(
             Uint128::new(1500) == balance5,
             "Balance should updated after Response Commit"
@@ -1364,7 +1366,7 @@ mod tests {
             "Get 6th Balance Failed"
         }
         let balance6: Uint128 = from_binary(&get_balance_resp6.unwrap()).unwrap();
-        println!("balance {:?}", balance6);
+        println!("balance of depositor2 AFTER COMMIT TRANSFER  {:?}", balance6);
         assert!(
             Uint128::new(1500) == balance6,
             "Balance should updated after Response Commit"
