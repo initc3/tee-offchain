@@ -1,5 +1,6 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Binary, Uint128, Addr};
+use crate::state::ReqType;
 
 #[cw_serde]
 pub struct InstantiateMsg {}
@@ -10,7 +11,29 @@ pub enum ExecuteMsg {
         new_counter: Uint128,
         new_hash: Binary,
         current_mac: Binary
+    },
+
+    SubmitDeposit {        
+    },
+
+    SubmitTransfer {
+        to: Addr,
+        amount: Uint128,
+        memo: String,
+    },
+
+    SubmitWithdraw {
+        amount: Uint128
+    },
+
+    CommitResponse {
+        cipher: Binary
+    },
+
+    WriteCheckpoint {
+        cipher: Binary       
     }
+
 }
 
 /// QueryMsg that the contract exposes
@@ -24,6 +47,13 @@ pub enum QueryMsg {
         current_hash: Binary,
         old_mac: Binary,
     },
+
+    GetRequest {
+        seqno: Uint128
+    },
+
+    GetCheckpoint {
+    }
 }
 
 #[cw_serde]
@@ -38,4 +68,15 @@ pub struct IterateHashAnswer {
     pub new_counter: Uint128,
     pub new_hash: Binary,
     pub new_mac: Binary
+}
+
+#[cw_serde]
+pub struct GetRequestAnswer {
+    pub reqtype: ReqType,
+    pub from: Addr
+}
+
+#[cw_serde]
+pub struct GetCheckpointAnswer {
+    pub cipher: Binary
 }
