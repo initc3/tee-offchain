@@ -12,6 +12,10 @@ pub static PREFIX_RESPONSE_KEY: Item<RespState> = Item::new(b"responses");
 pub static PREFIX_CHECKPOINT_KEY: Item<CheckPtState> = Item::new(b"checkpoints");
 pub static REQUEST_SEQNO_KEY: Item<Uint128> = Item::new(b"request_seqno");
 pub static CHECKPOINT_SEQNO_KEY: Item<Uint128> = Item::new(b"check_seqno");
+pub static CHECKPOINT_LEN_KEY: Item<Uint128> = Item::new(b"check_seqno");
+pub static AEAD_KEY: Item<SymmetricKey> = Item::new(b"aead_key");
+
+pub type SymmetricKey = [u8; 32];
 
 #[cw_serde]
 pub struct State {
@@ -49,4 +53,10 @@ pub struct RespState {
 pub struct CheckPtState {
     pub balance: Uint128,
     pub address: Addr
+}
+
+#[cw_serde]
+pub struct CheckPoint {
+    pub checkpoint: Vec<CheckPtState>,
+    pub seqno: Uint128
 }

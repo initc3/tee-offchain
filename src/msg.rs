@@ -75,8 +75,3 @@ pub struct GetRequestAnswer {
     pub reqtype: ReqType,
     pub from: Addr
 }
-
-#[cw_serde]
-pub struct GetCheckpointAnswer {
-    pub cipher: Binary
-}
