@@ -20,7 +20,6 @@ contract OffchainHashMachine {
         require(randomBytes.length == 32, "Incorrect random bytes length. Not Sapphire?");
         require(uint256(bytes32(randomBytes)) > 0, "randomBytes returned 0. Not Sapphire?");
         key = bytes32(randomBytes);
-        curHash = key;
     }
     
     function genMAC(bytes memory data) private view returns (bytes32 mac) {
@@ -47,7 +46,7 @@ contract OffchainHashMachine {
     
     function iterateOffChain(uint256 prevCounter, bytes32 prevHash, bytes32 prevMac) public view returns (uint256, bytes32, bytes32) {
         require(genMAC(abi.encodePacked(prevCounter, prevHash)) == prevMac, "Invalid MAC");
-        uint256 newCounter = counter + 1;
+        uint256 newCounter = prevCounter + 1;
         bytes32 newHash = keccak256(abi.encodePacked(prevHash));
         bytes32 newMac = genMAC(abi.encodePacked(newCounter, newHash));
         return (newCounter, newHash, newMac);

@@ -31,12 +31,22 @@ describe("OffchainHashMachine", function () {
     it("Should update to a new state", async function () {
       const { hashMachine } = await deploy();
       const [counterOld, hashOld, macOld] = await hashMachine.getState();
+      
       // Calculate new state off-chain
       let [counterNew, hashNew, macNew] = await hashMachine.iterateOffChain(counterOld, hashOld, macOld);
-      for (let i = 0; i < 5; i++) {
+      for (let i = 1; i < 5; i++) {
         [counterNew, hashNew, macNew] = await hashMachine.iterateOffChain(counterNew, hashNew, macNew);
       }
       await hashMachine.updateState(counterNew, hashNew, macNew);
+      
+      // Validate the new state
+      expect(counterNew).to.equal(5);
+      let expectedHash = "0x7365656400000000000000000000000000000000000000000000000000000000";
+      for (let i = 0; i < 5; i++) {
+        expectedHash = ethers.keccak256(expectedHash);
+      }
+      expect(hashNew).to.equal(expectedHash);
+      
       // Verify that the state was changed
       const [counterLatest, hashLatest, macLatest] = await hashMachine.getState();
       expect(counterLatest).to.equal(counterNew);
