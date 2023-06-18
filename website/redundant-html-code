@@ -1,0 +1,106 @@
+
+
+
+	<div class="section">
+		<div class="container">
+			<div class="row full-height justify-content-center">
+				<div class="col-12 text-center align-self-center py-5">
+					<div class="section pb-5 pt-5 pt-sm-2 text-center">
+						<h6 class="mb-0 pb-3"><span>Keplr </span><span>Metamask</span></h6>
+			          	<input class="checkbox" type="checkbox" id="reg-log" name="reg-log"/>
+			          	<label for="reg-log"></label>
+						<div class="card-3d-wrap mx-auto">
+							<div class="card-3d-wrapper">
+								<div class="card-front">
+									<div class="center-wrap">
+										<div class="section text-center">
+											<h4 class="mb-4 pb-3">TEE: Rollups for Free</h4>
+											<div class="form-group">
+												<h6> Connect to your Keplr wallet</h6>
+												<form>
+													<input type="text" name="addr_from" class="form-style" placeholder="From address:" id="addr_from" autocomplete="off">
+                        <i class="input-icon"><img src="" width="40"></img></i><!--insert keplr logo-->
+											</div>	
+                    
+                    								<div class="form-group">
+												<input type="text" name="balance_from" class="form-style" placeholder="Balance:" id="balance_from" autocomplete="off">
+                        <i class="input-icon"><img src="" width="40"></img></i><!--insert keplr logo-->
+											</div>	
+                    
+											<div class="form-group mt-2">
+												<br>
+                       									<br>
+                        								<h6>Send SCRT</h6>
+                      		  							<input type="text" name="addr_to" class="form-style" placeholder="To address:" id="addr_to" autocomplete="off">
+				<i class="input-icon"><img src="" width="40"></img></i><!--insert keplr logo-->
+											</div>
+                  								<div class="form-group">
+                  									<input type="number" class="form-style" placeholder="Amount:" id="amnt_to" name="amnt_to">
+     												</input>
+                  									<br>
+      										</div>
+                 									<div class="form-group">
+                  									<input type="text" class="form-style" placeholder="Memo:" id="memo_to" name="memo_to" size="32">
+      											</input>
+              
+      										</div>
+											<a href="#" class="btn mt-4">submit</a>
+                            				<p class="mb-0 mt-4 text-center"><a href="#0" class="link">Click Submit to send</a></p>
+                            			</form>
+				      					</div>
+			      					</div>
+			      				</div>
+			      				<!--Card back-->
+								<div class="card-back">
+									<div class="center-wrap">
+										<div class="section text-center">
+											<h4 class="mb-4 pb-3">TEE: Rollups for Free</h4>
+											<div class="form-group">
+												<h6> Connect to your Metamask wallet</h6><input type="text" name="addr_from" class="form-style" placeholder="From address:" id="addr_from_meta" autocomplete="off">
+                        <i class="input-icon"><img src="" width="40"></img></i>
+
+                        <!--insert metamask logo-->
+                        <!--js to connect to wallet-->
+											</div>
+											<div class="form-group">
+												<input type="text" name="balance_from_meta" class="form-style" placeholder="Balance:" id="balance_from_meta" autocomplete="off">
+                        <i class="input-icon"><img src="" width="40"></img></i>
+                        <!--insert metamask logo-->
+                        <!--js to return the balance-->
+											</div>
+											<div class="form-group mt-2">
+												<br>
+                       									<br>
+                        								<h6>Send ROSE</h6>
+                      		  							<input type="text" name="addr_to_meta" class="form-style" placeholder="To address:" id="addr_to_meta" autocomplete="off">
+				<i class="input-icon"><img src="" width="40"></img></i>
+				<!--insert metamask logo-->
+											</div>
+											<div class="form-group">
+                  									<input type="number" class="form-style" placeholder="Amount:" id="amnt_to_meta" name="amnt_to_meta">
+     												</input>
+                  									<br>
+      										</div>
+      										<div class="form-group">
+                  									<input type="text" class="form-style" placeholder="Memo:" id="memo_to_meta" name="memo_to_meta" size="32">
+      											</input>
+              
+      										</div>
+
+											<a href="#" class="btn mt-4">submit</a>
+                            								<p class="mb-0 mt-4 text-center"><a href="#0" class="link">Click Submit to send</a>
+                            								</p>
+				      					</div>
+			      					</div>
+			      				</div>
+			      				<!-- create read only text that posts what is happening in backend-->
+								<!--Sequence Processed() uint seq number processed-->
+								<!--GET Next Received () uint since seq number-->
+								<!--POST Receipt () Seq number, from, amount, memo-->
+			      			</div>
+			      		</div>
+			      	</div>
+		      	</div>
+	      	</div>
+	    </div>
+	</div>
