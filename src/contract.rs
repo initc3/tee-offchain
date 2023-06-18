@@ -1,12 +1,78 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult, ensure, StdError, to_binary, Addr};
+use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult, ensure, StdError, to_binary, from_binary, Addr};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use schemars::_serde_json::to_string;
-
-use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
-use crate::state::{State, ReqType, ReqState, CONFIG_KEY, REQUEST_SEQNO_KEY, PREFIX_REQUESTS_KEY, CHECKPOINT_SEQNO_KEY};
+use ring::{aead, error};
+use secret_toolkit_crypto::ContractPrng;
+use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer};
+use crate::state::{State, ReqType, ReqState, SymmetricKey, CheckPoint, AEAD_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, PREFIX_REQUESTS_KEY, CHECKPOINT_SEQNO_KEY, PREFIX_CHECKPOINT_KEY, CHECKPOINT_LEN_KEY};
 
 type HmacSha256 = Hmac<Sha256>;
+static AES_MODE: &aead::Algorithm = &aead::AES_256_GCM;
+
+/// The IV key byte size
+const IV_SIZE: usize = 96/8;
+/// Type alias for the IV byte array
+type IV = [u8; IV_SIZE];
+
+/// `OneNonceSequence` is a Generic Nonce sequence
+pub struct OneNonceSequence(Option<aead::Nonce>);
+
+impl OneNonceSequence {
+    /// Constructs the sequence allowing `advance()` to be called
+    /// `allowed_invocations` times.
+    fn new(nonce: aead::Nonce) -> Self {
+        Self(Some(nonce))
+    }
+}
+
+impl aead::NonceSequence for OneNonceSequence {
+    fn advance(&mut self) -> Result<aead::Nonce, error::Unspecified> {
+        self.0.take().ok_or(error::Unspecified)
+    }
+}
+pub fn encrypt_with_nonce(message: &[u8], key: &SymmetricKey, iv: &[u8; 12]) -> Result<Vec<u8>, StdError> {
+
+    let aes_encrypt = aead::UnboundKey::new(&AES_MODE, key)
+        .map_err(|_| StdError::generic_err("Encryption Error"))?;
+
+    let mut in_out = message.to_owned();
+    let tag_size = AES_MODE.tag_len();
+    in_out.extend(vec![0u8; tag_size]);
+    let _seal_size = {
+        let iv = aead::Nonce::assume_unique_for_key(*iv);
+        let nonce_sequence = OneNonceSequence::new(iv);
+        let mut seal_key: aead::SealingKey<OneNonceSequence> = aead::BoundKey::new(aes_encrypt, nonce_sequence);
+        seal_key.seal_in_place_append_tag(aead::Aad::empty(), &mut in_out)
+            .map_err(|_| StdError::generic_err("Encryption Error"))
+    }?;
+    // in_out.truncate(seal_size);
+    in_out.extend_from_slice(iv);
+    Ok(in_out)
+}
+pub fn decrypt(cipheriv: &[u8], key: &SymmetricKey) -> Result<Vec<u8>, StdError> {
+    if cipheriv.len() < IV_SIZE {
+        return Err(StdError::generic_err("Improper encryption Error"));
+    }
+    let aes_decrypt = aead::UnboundKey::new(&AES_MODE, key)
+        .map_err(|_| StdError::generic_err("Unbound key Error"))?;
+
+    let (ciphertext, iv) = cipheriv.split_at(cipheriv.len()-12);
+    let nonce = aead::Nonce::try_assume_unique_for_key(&iv).unwrap(); // This Cannot fail because split_at promises that iv.len()==12
+    let nonce_sequence = OneNonceSequence::new(nonce);
+    let mut ciphertext = ciphertext.to_owned();
+    let mut open_key: aead::OpeningKey<OneNonceSequence>  = aead::BoundKey::new(aes_decrypt, nonce_sequence);
+    let decrypted_data = match open_key.open_in_place(aead::Aad::empty(), &mut ciphertext) {
+        Ok(x) => x,
+        Err(e) => {
+            println!("symmetric:decrypt open_in_place err {:?}",e);
+            return Err(StdError::generic_err("Decryption Error"));
+        }
+    };
+    // let decrypted_data = decrypted_data.map_err(|_| CryptoError::DecryptionError)?;
+
+    Ok(decrypted_data.to_vec())
+}
 
 #[entry_point]
 pub fn instantiate(
@@ -22,16 +88,24 @@ pub fn instantiate(
     let config = State {
         owner: info.sender,
         key: entropy.clone(),
-        current_hash: entropy,
+        current_hash: entropy.clone(),
         counter: Uint128::zero()
     };
-
-    let seqno = Uint128::zero();
+    let mut hasher = Sha256::default();
+    hasher.update(entropy.clone().as_slice());
+    let finalized_hash = hasher.finalize();
+    let prng_seed = finalized_hash.as_slice();
+    let mut rng = ContractPrng::new(&prng_seed, entropy.as_slice());
+    let symmetric_key: SymmetricKey = rng.rand_bytes();
+    let zero_val = Uint128::zero();
 
     // Save data to storage
     CONFIG_KEY.save(deps.storage, &config).unwrap();
-    CHECKPOINT_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
-    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
+    CHECKPOINT_SEQNO_KEY.save(deps.storage, &zero_val).unwrap();
+    REQUEST_SEQNO_KEY.save(deps.storage, &zero_val).unwrap();
+    CHECKPOINT_LEN_KEY.save(deps.storage, &zero_val).unwrap();
+    REQUEST_SEQNO_KEY.save(deps.storage, &zero_val).unwrap();
+    AEAD_KEY.save(deps.storage, &symmetric_key).unwrap();
 
     // CONFIG_KEY.save(deps.storage.deref_mut(), &config).unwrap();
 
@@ -93,7 +167,15 @@ pub fn execute(
                 env,
                 info,
                 cipher
-            )
+            ),
+        ExecuteMsg::WriteCheckpoint {
+            cipher
+        } => try_write_checkpoint(
+                deps,
+                env,
+                info,
+                cipher
+        ),
     };
     res
 }
@@ -259,6 +341,7 @@ fn try_commit_response(
 
     REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
 
+    let amount = Uint128::one(); //TODO from cipher
     let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
 
     let request = ReqState {
@@ -272,19 +355,51 @@ fn try_commit_response(
     Ok(Response::default())
 }
 
+fn try_write_checkpoint(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cipher: Binary,
+) -> StdResult<Response> {
+    let key = AEAD_KEY.load(deps.storage).unwrap();
+    let checkpoint_vec = decrypt(cipher.as_slice(), &key).unwrap();
+    let checkpoint_bin = to_binary(&checkpoint_vec).unwrap();
+    let mut new_checkpoint: CheckPoint = from_binary(&checkpoint_bin).unwrap();
+
+    let mut seqno = CHECKPOINT_SEQNO_KEY.load(deps.storage).unwrap();
+
+    if seqno > new_checkpoint.seqno {
+        return Err(StdError::generic_err("New Checkpoint Seq no too low"));
+    }
+    CHECKPOINT_SEQNO_KEY.save(deps.storage, &new_checkpoint.seqno).unwrap();
+
+    let checkpoint_len_128: u128 = new_checkpoint.checkpoint.len().try_into().unwrap();
+    let checkpoint_len = Uint128::from(checkpoint_len_128);
+    CHECKPOINT_LEN_KEY.save(deps.storage, &checkpoint_len).unwrap();
+
+    for i in 0..new_checkpoint.checkpoint.len() {
+        let i_u128: u128 = i.try_into().unwrap();
+        let num = Uint128::from(i_u128);
+        let checkpt_key = PREFIX_CHECKPOINT_KEY.add_suffix(&num.to_be_bytes());
+        let checkpt = new_checkpoint.checkpoint.get(i).unwrap();
+        checkpt_key.save(deps.storage, &checkpt).unwrap();
+    }
+
+    Ok(Response::default())
+}
 
 // ---------------------------------------- QUERIES --------------------------------------
 
 #[entry_point]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetState {
-        } => qet_state(deps, _env),
+        } => qet_state(deps, env),
         QueryMsg::IterateHash {
             counter,
             current_hash,
             old_mac,
-        } => iterate_hash(deps, _env, counter, current_hash, old_mac),
+        } => iterate_hash(deps, env, counter, current_hash, old_mac),
         QueryMsg::GetRequest {
             seqno,
         } => get_request(deps, env, seqno),
@@ -380,8 +495,8 @@ fn get_request(
     let request = req_key.load(deps.storage).unwrap();
 
     let resp = GetRequestAnswer {
-        request.reqtype,
-        request.from
+        reqtype: request.reqtype,
+        from: request.from
     };
 
     // Convert the `GetStateAnswer` to base64'd JSON
@@ -393,17 +508,37 @@ fn get_request(
 
 fn get_checkpoint(
     deps: Deps,
-    _env: Env
+    env: Env
 ) -> StdResult<Binary> {
     let mut seqno = CHECKPOINT_SEQNO_KEY.load(deps.storage).unwrap();
+    let mut checkpoint_list = Vec::new();
+    let checkpoint_len = CHECKPOINT_LEN_KEY.load(deps.storage).unwrap();
+    for i in 0..checkpoint_len.u128() {
+        let num = Uint128::from(i);
+        let checkpt_key = PREFIX_CHECKPOINT_KEY.add_suffix(&num.to_be_bytes());
+        let checkpt = checkpt_key.load(deps.storage).unwrap();
+        checkpoint_list.push(checkpt);
+    }
 
-    let cipher = Binary::default();
-    // let cipher = aead::cipher.encrypt(nonce, plaintext); TODO
-    let resp = GetCheckpointAnswer {
-        cipher: cipher
-    };  
+    let mut message = CheckPoint {
+        checkpoint: checkpoint_list,
+        seqno: seqno
+    };
+    let plaintext = to_binary(&message).unwrap();
+    let entropy = env.block.random.unwrap();
+    let key = AEAD_KEY.load(deps.storage).unwrap();
 
-    let resp_as_b64 = to_binary(&resp).unwrap();
+    let mut hasher = Sha256::default();
+    hasher.update(entropy.clone().as_slice());
+    let finalized_hash = hasher.finalize();
+    let prng_seed = finalized_hash.as_slice();
+    let mut rng = ContractPrng::new(&prng_seed, entropy.as_slice());
+    let rnd_bytes = rng.rand_bytes();
+    let nonce : [u8;12] = rnd_bytes[0..12].try_into().unwrap();
+
+    let cipher = encrypt_with_nonce(&plaintext, &key, &nonce).unwrap();
+
+    let resp_as_b64 = to_binary(&cipher).unwrap();
 
     Ok(resp_as_b64)
 }
@@ -580,4 +715,19 @@ mod tests {
 
         println!("{:?}", res.unwrap())
     }
+
+
+    #[test]
+    fn test_checkpoint() {
+        let mock_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mock_info = mock_info("owner", &[]);
+
+        let resp = instantiate(mock_deps.as_mut(), mock_env, mock_info, InstantiateMsg{}); 
+
+        let query_resp = get_checkpoint(mocked_deps.as_ref(), mocked_env).unwrap();
+
+        println!("{:?}", query_resp.unwrap())
+    }
+
 }
