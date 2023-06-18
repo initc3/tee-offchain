@@ -20,3 +20,8 @@ docker run -it -p8545:8545 -p8546:8546 ghcr.io/oasisprotocol/sapphire-dev -to "0
 ```shell
 npx hardhat test --network dev
 ```
+
+Test the deployment of the off-chain hash machine on the public Sapphire testnet:
+```
+PRIVATE_KEY=<funded private key> npx hardhat run scripts/deploy.ts --network sapphire_testnet
+```
