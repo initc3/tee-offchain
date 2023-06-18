@@ -1,10 +1,10 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult, ensure, StdError, to_binary};
+use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult, ensure, StdError, to_binary, Addr};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use schemars::_serde_json::to_string;
 
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
-use crate::state::{State, CONFIG_KEY};
+use crate::state::{State, ReqType, ReqState, CONFIG_KEY, REQUEST_SEQNO_KEY, PREFIX_REQUESTS_KEY, CHECKPOINT_SEQNO_KEY};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -26,8 +26,12 @@ pub fn instantiate(
         counter: Uint128::zero()
     };
 
+    let seqno = Uint128::zero();
+
     // Save data to storage
     CONFIG_KEY.save(deps.storage, &config).unwrap();
+    CHECKPOINT_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
+    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
 
     // CONFIG_KEY.save(deps.storage.deref_mut(), &config).unwrap();
 
@@ -55,6 +59,40 @@ pub fn execute(
                 new_counter,
                 new_hash,
                 current_mac,
+            ),
+        ExecuteMsg::SubmitDeposit {
+        } => try_submit_deposit(
+                deps,
+                env,
+                info,
+            ),
+        ExecuteMsg::SubmitTransfer {
+            to,
+            amount,
+            memo
+        } => try_submit_transfer(
+                deps,
+                env,
+                info,
+                to,
+                amount,
+                memo
+            ),
+        ExecuteMsg::SubmitWithdraw {
+            amount
+        } => try_submit_withdraw(
+                deps,
+                env,
+                info,
+                amount
+            ),
+        ExecuteMsg::CommitResponse {
+            cipher
+        } => try_commit_response(
+                deps,
+                env,
+                info,
+                cipher
             )
     };
     res
@@ -95,8 +133,164 @@ fn try_apply_update(
     store.current_hash = new_hash;
 
     CONFIG_KEY.save(deps.storage, &store).unwrap();
-
+    //TODO add event
     Ok(Response::new())
+}
+
+fn try_submit_deposit(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+) -> StdResult<Response> {
+
+    let mut amount = Uint128::zero();
+
+    for coin in &info.funds {
+        amount += coin.amount
+    }
+
+    if amount.is_zero() {
+        return Err(StdError::generic_err("No funds were sent to be deposited"));
+    }
+
+    // let mut raw_amount = amount.u128();
+
+    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one());
+
+    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
+
+    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
+
+    let request = ReqState {
+        reqtype: ReqType::DEPOSIT,
+        from: info.sender,
+        to: None,
+        amount: amount,
+        memo: None
+    };
+    req_key.save(deps.storage, &request).unwrap();
+    //TODO add event
+    Ok(Response::default())
+}
+
+fn try_submit_transfer(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    to: Addr,
+    amount: Uint128,
+    memo: String
+) -> StdResult<Response> {
+
+    let mut amount = Uint128::zero();
+
+    for coin in &info.funds {
+        amount += coin.amount
+    }
+
+    if amount.is_zero() {
+        return Err(StdError::generic_err("No funds were sent to be transfered"));
+    }
+
+    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one());
+
+    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
+
+    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
+
+    let request = ReqState {
+        reqtype: ReqType::TRANSFER,
+        from: info.sender,
+        to: Some(to),
+        amount: amount,
+        memo: Some(memo)
+    };
+    req_key.save(deps.storage, &request).unwrap();
+    //TODO add event
+    Ok(Response::default())
+}
+
+fn try_submit_withdraw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    amount: Uint128,
+) -> StdResult<Response> {
+
+    let mut amount = Uint128::zero();
+
+    for coin in &info.funds {
+        amount += coin.amount
+    }
+
+    if amount.is_zero() {
+        return Err(StdError::generic_err("No funds were sent to be transfered"));
+    }
+
+    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one());
+
+    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
+
+    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
+
+    let request = ReqState {
+        reqtype: ReqType::WITHDRAW,
+        from: info.sender,
+        to: None,
+        amount: amount,
+        memo: None
+    };
+    req_key.save(deps.storage, &request).unwrap();
+    Ok(Response::default())
+}
+
+fn try_commit_response(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    cipher: Binary,
+) -> StdResult<Response> {
+
+    let mut seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    seqno.checked_add(Uint128::one());
+
+    REQUEST_SEQNO_KEY.save(deps.storage, &seqno).unwrap();
+
+    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
+
+    let request = ReqState {
+        reqtype: ReqType::WITHDRAW,
+        from: info.sender,
+        to: None,
+        amount: amount,
+        memo: None
+    };
+    req_key.save(deps.storage, &request).unwrap();
+    Ok(Response::default())
+}
+
+
+// ---------------------------------------- QUERIES --------------------------------------
+
+#[entry_point]
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+    match msg {
+        QueryMsg::GetState {
+        } => qet_state(deps, _env),
+        QueryMsg::IterateHash {
+            counter,
+            current_hash,
+            old_mac,
+        } => iterate_hash(deps, _env, counter, current_hash, old_mac),
+        QueryMsg::GetRequest {
+            seqno,
+        } => get_request(deps, env, seqno),
+        QueryMsg::GetCheckpoint {
+        } => get_checkpoint(deps, env)
+    }
 }
 
 fn qet_state(
@@ -176,19 +370,42 @@ fn iterate_hash(
     Ok(resp_as_b64)
 }
 
-// ---------------------------------------- QUERIES --------------------------------------
 
-#[entry_point]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::GetState {
-        } => qet_state(deps, _env),
-        QueryMsg::IterateHash {
-            counter,
-            current_hash,
-            old_mac,
-        } => iterate_hash(deps, _env, counter, current_hash, old_mac),
-    }
+fn get_request(
+    deps: Deps,
+    _env: Env,
+    seqno: Uint128,
+) -> StdResult<Binary> {
+    let req_key = PREFIX_REQUESTS_KEY.add_suffix(&seqno.to_be_bytes());
+    let request = req_key.load(deps.storage).unwrap();
+
+    let resp = GetRequestAnswer {
+        request.reqtype,
+        request.from
+    };
+
+    // Convert the `GetStateAnswer` to base64'd JSON
+    let resp_as_b64 = to_binary(&resp).unwrap();
+
+    // Return that out!
+    Ok(resp_as_b64)
+}
+
+fn get_checkpoint(
+    deps: Deps,
+    _env: Env
+) -> StdResult<Binary> {
+    let mut seqno = CHECKPOINT_SEQNO_KEY.load(deps.storage).unwrap();
+
+    let cipher = Binary::default();
+    // let cipher = aead::cipher.encrypt(nonce, plaintext); TODO
+    let resp = GetCheckpointAnswer {
+        cipher: cipher
+    };  
+
+    let resp_as_b64 = to_binary(&resp).unwrap();
+
+    Ok(resp_as_b64)
 }
 
 fn gen_hash(counter_in: Uint128, current_hash: Binary) -> StdResult<Binary> {
