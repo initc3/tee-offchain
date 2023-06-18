@@ -14,8 +14,12 @@ const config: HardhatUserConfig = {
     },
     dev: {
       url: "http://127.0.0.1:8545",
-      // 0x72A6CF1837105827077250171974056B40377488
-      accounts: ["0x519028d411cec86054c9c35903928eed740063336594f1b3b076fce119238f6a"],
+      accounts: [
+        // 0x75eCF0d4496C2f10e4e9aF3D4d174576Ee9010E2
+        "0x160f52faa5c0aecfa26c793424a04d53cbf23dcad5901ce15b50c2e85b9d6ca7",
+        // 0x903a7dce5a26a3f4DE2d157606c2191740Bc4BC9
+        "0x0ba685723b47d8e744b1b70a9bea9d4d968f60205385ae9de99865174c1af110"
+      ],
       chainId: 0x5afd,
     },
   },

@@ -106,7 +106,9 @@ contract VeiledToken {
     */
     function processNext(bytes calldata ciphertext, bytes32 nonce) public view returns (bytes memory, bytes32, bytes memory, bytes32) {
         (uint256 oldSeq, AccountState[] memory thisCheckpoint) = abi.decode(Sapphire.decrypt(key, nonce, ciphertext, "checkpoint"), (uint256, AccountState[]));
-        uint256 seqNum = oldSeq + 1;
+        uint256 seqNum = oldSeq;
+        uint256 nextSeqNum = seqNum + 1;
+        require(seqNum < requests.length, "Sequence number too high. Send a request!");
         Request memory req = requests[seqNum];
         Response memory resp;
         if (req.rtype == RequestType.TRANSFER) {
@@ -116,13 +118,42 @@ contract VeiledToken {
                 balanceOk = balanceOk && (!isSender || thisCheckpoint[i].balance >= req.amount);
                 thisCheckpoint[i].balance -= req.amount * (isSender ? 1 : 0) * (balanceOk ? 1 : 0);
             }
-            resp = Response(seqNum, balanceOk, 0, "transfer ok");
+            bool foundRecipient = false;
+            for (uint256 i = 0; i < thisCheckpoint.length; i++) {
+                bool isRecipient = (thisCheckpoint[i].addr == req.to);
+                foundRecipient = foundRecipient || isRecipient;
+                thisCheckpoint[i].balance += req.amount * (isRecipient ? 1 : 0) * (balanceOk ? 1 : 0);
+            }
+            if (!foundRecipient) {
+                // Add a new address whose initial value is the deposit amount
+                AccountState[] memory newCheckpoint = new AccountState[](thisCheckpoint.length + 1);
+                for (uint256 i = 0; i < thisCheckpoint.length; i++) {
+                    newCheckpoint[i] = thisCheckpoint[i];
+                }
+                newCheckpoint[thisCheckpoint.length] = AccountState(req.to, req.amount);
+                thisCheckpoint = newCheckpoint;
+            }
+            resp = Response(nextSeqNum, balanceOk, 0, balanceOk ? "transfer ok" : "not enough funds");
         } else if (req.rtype == RequestType.DEPOSIT) {
+            bool found = false;
             for (uint256 i = 0; i < thisCheckpoint.length; i++) {
                 bool isSender = (thisCheckpoint[i].addr == req.from);
                 thisCheckpoint[i].balance += (req.amount) * (isSender ? 1 : 0);
+                found = found || isSender;
             }
-            resp = Response(seqNum, true, 0, "");
+            // Leaks
+            // Alternative: once it reaches 80% full, there is a random interaction that pads it with
+            // empty addresses, and you'd write the address to one of the empty ones. A classic ORAM trick.
+            if (!found) {
+                // Add a new address whose initial value is the deposit amount
+                AccountState[] memory newCheckpoint = new AccountState[](thisCheckpoint.length + 1);
+                for (uint256 i = 0; i < thisCheckpoint.length; i++) {
+                    newCheckpoint[i] = thisCheckpoint[i];
+                }
+                newCheckpoint[thisCheckpoint.length] = AccountState(req.from, req.amount);
+                thisCheckpoint = newCheckpoint;
+            }
+            resp = Response(nextSeqNum, true, req.amount, "");
         } else if (req.rtype == RequestType.WITHDRAW) {
             bool balanceOk = true;
             for (uint256 i = 0; i < thisCheckpoint.length; i++) {
@@ -130,11 +161,11 @@ contract VeiledToken {
                 balanceOk = balanceOk && (!isSender || thisCheckpoint[i].balance >= req.amount);
                 thisCheckpoint[i].balance -= req.amount * (isSender ? 1 : 0) * (balanceOk ? 1 : 0);
             }
-            resp = Response(seqNum, balanceOk, req.amount * (balanceOk ? 1 : 0), "");
+            resp = Response(nextSeqNum, balanceOk, req.amount * (balanceOk ? 1 : 0), "");
         }
         
         bytes32 checkpointNonce = bytes32(Sapphire.randomBytes(32, ""));
-        bytes memory newCheckpointCipher = Sapphire.encrypt(key, checkpointNonce, abi.encode(seqNum, thisCheckpoint), "checkpoint");
+        bytes memory newCheckpointCipher = Sapphire.encrypt(key, checkpointNonce, abi.encode(nextSeqNum, thisCheckpoint), "checkpoint");
         bytes32 responseNonce = bytes32(Sapphire.randomBytes(32, ""));
         bytes memory responseCipher = Sapphire.encrypt(key, responseNonce, abi.encode(resp), "response");
         return (newCheckpointCipher, checkpointNonce, responseCipher, responseNonce);
@@ -144,9 +175,10 @@ contract VeiledToken {
         // This encryption handles authentication
         Response memory resp = abi.decode(Sapphire.decrypt(key, nonce, ciphertext, "response"), (Response));
         // Process strictly in order
-        require(resp.seqNum == responses.length);
+        require(resp.seqNum == responses.length + 1, "Sequence number must be the next in order");
+        responses.push(resp);
         
-        Request memory request = requests[resp.seqNum];
+        Request memory request = requests[resp.seqNum - 1];
         if (request.rtype == RequestType.WITHDRAW) {
             address addr = request.from;
             payable(addr).transfer(resp.amount);
