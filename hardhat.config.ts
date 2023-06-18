@@ -13,10 +13,10 @@ const config: HardhatUserConfig = {
   networks: {
     sapphire_testnet: {
       url: "https://testnet.sapphire.oasis.dev",
-      accounts: process.env.PRIVATE_KEY
+      accounts: process.env.PRIVATE_KEY2
         ? [process.env.PRIVATE_KEY, process.env.PRIVATE_KEY2]
         //0xaEad73A6E2fA0ffD71a285849031486f4004B0EC
-        : [],
+        : (process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []),
       chainId: 0x5aff,
     },
     dev: {
