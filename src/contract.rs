@@ -3,7 +3,7 @@ use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac};
 use schemars::_serde_json::to_string;
 
-use crate::msg::{ExecuteMsg, GetStateResp, InstantiateMsg, IterateHashResp, QueryMsg};
+use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 use crate::state::{State, CONFIG_KEY};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -17,7 +17,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     // grab random entropy that is produced by the consensus
     let entropy = env.block.random.unwrap();
-    
+
     // The `State` is created
     let config = State {
         owner: info.sender,
@@ -99,7 +99,7 @@ fn try_apply_update(
     Ok(Response::new())
 }
 
-fn get_state(
+fn qet_state(
     deps: Deps,
     _env: Env,
 ) -> StdResult<Binary> {
@@ -110,7 +110,7 @@ fn get_state(
     let current_mac_result = gen_mac(store.key, store.current_hash.clone()).unwrap();
 
     // Struct containing the information of the state to return to the user
-    let resp = GetStateResp {
+    let resp = GetStateAnswer {
         counter: store.counter,
         current_hash: store.current_hash,
         current_mac: current_mac_result
@@ -165,7 +165,7 @@ fn iterate_hash(
     let new_mac = gen_mac(store.key, new_hash.clone()).unwrap();
 
     // Answer with the data that should be correct
-    let resp = IterateHashResp {
+    let resp = IterateHashAnswer {
         new_counter,
         new_hash,
         new_mac,
@@ -182,7 +182,7 @@ fn iterate_hash(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetState {
-        } => get_state(deps, _env),
+        } => qet_state(deps, _env),
         QueryMsg::IterateHash {
             counter,
             current_hash,
@@ -236,7 +236,7 @@ mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_binary, StdResult, Uint128};
     use crate::contract::{gen_hash, gen_mac, instantiate, query};
-    use crate::msg::{ExecuteMsg, GetStateResp, InstantiateMsg, IterateHashResp, QueryMsg};
+    use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 
     #[test]
     fn test_get_state() {
@@ -252,7 +252,7 @@ mod tests {
         let query_resp = query(mocked_deps.as_ref(), mocked_env, query_msg).unwrap();
 
 
-        let query_to_struct: GetStateResp = from_binary(&query_resp).unwrap();
+        let query_to_struct: GetStateAnswer = from_binary(&query_resp).unwrap();
 
         println!("{:?}", query_to_struct)
     }
@@ -270,7 +270,7 @@ mod tests {
         let mocked_env = mock_env();
         let query_resp = query(mocked_deps.as_ref(), mocked_env, query_msg).unwrap();
 
-        let query_as_struct: GetStateResp = from_binary(&query_resp).unwrap();
+        let query_as_struct: GetStateAnswer = from_binary(&query_resp).unwrap();
 
         let iterate_hash = QueryMsg::IterateHash {
             counter: query_as_struct.counter,
@@ -283,7 +283,7 @@ mod tests {
         // Try cranking the contract a few times
         let mocked_env = mock_env();
         let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
-        let iterate_hash_resp: StdResult<IterateHashResp> = from_binary(&iterate_hash_resp);
+        let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
 
         //let applyUpdate = ExecuteMsg::ApplyUpdate {
         //    new_counter: iterate_hash_resp.new_counter,
