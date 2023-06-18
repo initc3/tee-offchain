@@ -1,9 +1,10 @@
-use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, StdResult, ensure, StdError, to_binary, Addr};
+use cosmwasm_std::{Coin, entry_point, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, StdResult, ensure, StdError, to_binary, Addr, CosmosMsg};
 use sha2::{Sha256, Digest};
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
 use crate::state::{State, ReqType, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
 use crate::utils::{get_key, bool_to_uint128};
+use cosmwasm_std::ReplyOn::Success;
 
 #[entry_point]
 pub fn instantiate(
@@ -271,8 +272,15 @@ fn try_commit_response(
 
     let request = Request::load(deps.storage, response.seqno).unwrap();
     if request.reqtype == ReqType::WITHDRAW {
-        // Address addr = request.from;
-        // transfer(addr, resp.amt);
+        let withdrawal_coins: Vec<Coin> = vec![Coin {
+            denom: "uscrt".to_string(),
+            amount: request.amount,
+        }];
+        let message: CosmosMsg = CosmosMsg::Bank(BankMsg::Send {
+            to_address: request.from.clone().into_string(),
+            amount: withdrawal_coins,
+        });
+        println!("message {:?}", message);
     }
     //todo emit event
     Ok(Response::default())
@@ -293,6 +301,7 @@ fn try_write_checkpoint(
     println!("try_write_checkpoint {:?}", new_checkpoint);
 
     CheckPoint::save(deps.storage, new_checkpoint).unwrap();
+
     
     Ok(Response::default())
 }
@@ -1124,6 +1133,7 @@ mod tests {
             Uint128::new(500) == balance4,
             "Balance should still be 500 after Response Commit"
         );
+
     }
 
 
