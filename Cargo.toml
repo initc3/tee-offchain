@@ -45,7 +45,7 @@ cw-storage-plus = "1.0.1"
 cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.10", features = ["random"]}
 cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.1.10", default-features = false}
 cosmwasm-schema = "1.0.0"
-secret-toolkit = { version = "0.9.0", default-features = false, features = ["utils", "storage", "serialization", "crypto"] }
+secret-toolkit = { version = "0.9.0", default-features = false, features = ["utils", "storage", "serialization", "crypto", "viewing-key"] }
 secret-toolkit-crypto = { version = "0.9.0", features = ["hash", "rand", "ecc-secp256k1"] }
 ring = "0.16.20"
 

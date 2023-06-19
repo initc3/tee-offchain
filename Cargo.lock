@@ -36,6 +36,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
+name = "base64"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
+
+[[package]]
 name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -151,7 +157,7 @@ version = "1.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92d5fdfd112b070055f068fad079d490117c8e905a588b92a5a7c9276d029930"
 dependencies = [
- "base64",
+ "base64 0.13.1",
  "cosmwasm-crypto",
  "cosmwasm-derive",
  "derivative",
@@ -622,7 +628,7 @@ version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96c6a61dae35087c6408d020abaacc91e6011135015ebcc680f37bada7391411"
 dependencies = [
- "base64",
+ "base64 0.13.1",
  "cosmwasm-derive",
  "derivative",
  "forward_ref",
@@ -655,6 +661,7 @@ dependencies = [
  "secret-toolkit-serialization",
  "secret-toolkit-storage",
  "secret-toolkit-utils",
+ "secret-toolkit-viewing-key",
 ]
 
 [[package]]
@@ -704,6 +711,22 @@ dependencies = [
  "secret-cosmwasm-std",
  "secret-cosmwasm-storage",
  "serde",
+]
+
+[[package]]
+name = "secret-toolkit-viewing-key"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f9365f5a7200dcc92f3c65fc55266c054df761933bc0e0c57fb3e5e99e7275f"
+dependencies = [
+ "base64 0.21.2",
+ "schemars",
+ "secret-cosmwasm-std",
+ "secret-cosmwasm-storage",
+ "secret-toolkit-crypto",
+ "secret-toolkit-utils",
+ "serde",
+ "subtle",
 ]
 
 [[package]]
