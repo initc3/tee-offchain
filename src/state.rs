@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 
 use cosmwasm_std::{Addr, Binary, Uint128, Env, StdResult, Storage, StdError, to_binary, from_binary};
 use secret_toolkit::storage::Item;
+use secret_toolkit_crypto::ContractPrng;
 use crate::utils::{encrypt_with_nonce, decrypt, get_nonce, get_prng};
 
 /// Basic configuration struct
@@ -84,9 +85,8 @@ impl ResponseState {
 
     }
 
-    pub fn encrypt_response(store: &dyn Storage, env: Env, response: ResponseState) -> StdResult<Binary> {
+    pub fn encrypt_response(store: &dyn Storage, prng: &mut ContractPrng, response: ResponseState) -> StdResult<Binary> {
         let key = AEAD_KEY.load(store).unwrap();
-        let prng = get_prng(env);
         let nonce = get_nonce(prng);
 
         let response_bin = to_binary(&response).unwrap();
@@ -133,9 +133,8 @@ impl CheckPoint {
         return Ok(checkpoint);
     }
 
-    pub fn encrypt_checkpoint(store: &dyn Storage, env: Env, checkpoint: CheckPoint) -> StdResult<Binary> {
+    pub fn encrypt_checkpoint(store: &dyn Storage, prng: &mut ContractPrng, checkpoint: CheckPoint) -> StdResult<Binary> {
         let key = AEAD_KEY.load(store).unwrap();
-        let prng = get_prng(env);
         let nonce = get_nonce(prng);
 
         let checkpoint_bin = to_binary(&checkpoint).unwrap();
