@@ -3,7 +3,7 @@ use sha2::{Sha256, Digest};
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
 use crate::state::{State, ReqType, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
-use crate::utils::{get_key, bool_to_uint128};
+use crate::utils::{get_key, bool_to_uint128, get_prng};
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
 
 #[entry_point]
@@ -467,7 +467,8 @@ fn get_checkpoint(
 ) -> StdResult<Binary> {
 
     let checkpoint = CheckPoint::load(deps.storage)?;
-    let cipher = CheckPoint::encrypt_checkpoint(deps.storage, env, checkpoint)?;
+    let mut prng = get_prng(env);
+    let cipher = CheckPoint::encrypt_checkpoint(deps.storage, &mut prng, checkpoint)?;
 
     let resp_as_b64 = to_binary(&cipher).unwrap();
 
@@ -585,9 +586,10 @@ fn process_request(
     checkpoint.seqno = checkpoint.seqno.checked_add(Uint128::one()).unwrap();
     checkpoint.resp_seqno = checkpoint.resp_seqno.checked_add(Uint128::one()).unwrap();
     println!("process_request requrning checkpoint {:?}", checkpoint);
+    let mut prng = get_prng(env);
 
-    let resp_cipher = ResponseState::encrypt_response(deps.storage, env.clone(), response).unwrap();
-    let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, env, checkpoint).unwrap();
+    let resp_cipher = ResponseState::encrypt_response(deps.storage, &mut prng, response).unwrap();
+    let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, &mut prng, checkpoint).unwrap();
     let resp = ProcessResponseAnswer {
         request_cipher: resp_cipher,
         checkpoint_cipher:  chkpt_cipher

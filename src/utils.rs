@@ -82,7 +82,7 @@ pub fn get_prng(env: Env) -> ContractPrng {
     return rng;
 }
 
-pub fn get_nonce(mut prng: ContractPrng) -> IV {
+pub fn get_nonce(prng: &mut ContractPrng) -> IV {
     let rnd_bytes = prng.rand_bytes();
     let nonce : [u8;12] = rnd_bytes[0..12].try_into().unwrap();
     return nonce;
