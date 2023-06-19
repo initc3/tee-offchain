@@ -29,7 +29,8 @@ pub fn instantiate(
     let symmetric_key = get_key(env);
     let checkpoint = CheckPoint {
         checkpoint: Vec::new(),
-        seqno: zero_val
+        seqno: zero_val,
+        resp_seqno: zero_val
     };
 
     // Save data to storage
@@ -165,8 +166,6 @@ fn try_submit_deposit(
         return Err(StdError::generic_err("No funds were sent to be deposited"));
     }
 
-    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
-
     let request = Request {
         reqtype: ReqType::DEPOSIT,
         from: info.sender,
@@ -197,8 +196,6 @@ fn try_submit_transfer(
     }
     //TODO save amount in contract
 
-    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
-
     let request = Request {
         reqtype: ReqType::TRANSFER,
         from: info.sender,
@@ -226,7 +223,6 @@ fn try_submit_withdraw(
         return Err(StdError::generic_err("No funds were sent to be transfered"));
     }
 
-    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
     let request = Request {
         reqtype: ReqType::WITHDRAW,
         from: info.sender,
@@ -466,7 +462,7 @@ fn process_request(
     cipher: Binary
 )-> StdResult<Binary> {
     let mut checkpoint: CheckPoint = CheckPoint::decrypt_checkpoint(deps.storage, cipher).unwrap();
-    let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
+    let seqno = checkpoint.resp_seqno;
     println!("process_request seqno {:?}", seqno);
     let request = Request::load(deps.storage, seqno).unwrap();
     let mut found: bool = false;
@@ -480,7 +476,7 @@ fn process_request(
         let a = AddressBalance{balance: Uint128::zero(), address: request.from.clone()};
         checkpoint.checkpoint.push(a);
     }
-    let resp = match request.reqtype {
+    let response = match request.reqtype {
         ReqType::DEPOSIT {} => {
             for i in 0..checkpoint.checkpoint.len() {
                 let a = checkpoint.checkpoint.get_mut(i).unwrap();
@@ -543,13 +539,14 @@ fn process_request(
         }
     };
     checkpoint.seqno = checkpoint.seqno.checked_add(Uint128::one()).unwrap();
+    checkpoint.resp_seqno = checkpoint.resp_seqno.checked_add(Uint128::one()).unwrap();
     println!("process_request requrning checkpoint {:?}", checkpoint);
 
-    let resp_cipher = ResponseState::encrypt_response(deps.storage, env.clone(), resp).unwrap();
+    let resp_cipher = ResponseState::encrypt_response(deps.storage, env.clone(), response).unwrap();
     let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, env, checkpoint).unwrap();
     let resp = ProcessResponseAnswer {
         request_cipher: resp_cipher,
-        checkpoint_ciper:  chkpt_cipher
+        checkpoint_cipher:  chkpt_cipher
     };
     Ok(to_binary(&resp).unwrap())
 }
@@ -828,7 +825,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_ciper};
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_cipher};
         let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
         assert! {
             write_checkpoint_resp.is_ok(),
@@ -924,6 +921,15 @@ mod tests {
         }
         let process_answer: ProcessResponseAnswer = from_binary(&process_next_resp.unwrap()).unwrap();
 
+
+        let process_next_msg2 = QueryMsg::ProcessNext{ cipher: process_answer.clone().checkpoint_cipher };
+        let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
+        assert!{
+            process_next_resp2.is_ok(),
+            "Process Next Failed"
+        }
+        let process_answer2: ProcessResponseAnswer = from_binary(&process_next_resp2.unwrap()).unwrap();
+
         let commit_response_msg = ExecuteMsg::CommitResponse{cipher: process_answer.request_cipher};
         let commit_response_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg);
         assert! {
@@ -931,25 +937,17 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_ciper};
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_cipher};
         let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
         assert! {
             write_checkpoint_resp.is_ok(),
             "Write Checkpoint Failed"
         }
 
-        let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
+        // let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
 
-        let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
-        let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
-
-        let process_next_msg2 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher2 };
-        let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
-        assert!{
-            process_next_resp2.is_ok(),
-            "Process Next Failed"
-        }
-        let process_answer2: ProcessResponseAnswer = from_binary(&process_next_resp2.unwrap()).unwrap();
+        // let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
+        // let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
 
         let commit_response_msg2 = ExecuteMsg::CommitResponse{cipher: process_answer2.request_cipher};
         let commit_response_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg2);
@@ -958,7 +956,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_ciper};
+        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_cipher};
         let write_checkpoint_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg2);
         assert! {
             write_checkpoint_resp2.is_ok(),
@@ -1054,7 +1052,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_ciper};
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_cipher};
         let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
         assert! {
             write_checkpoint_resp.is_ok(),
@@ -1114,7 +1112,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_ciper};
+        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_cipher};
         let write_checkpoint_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg2);
         assert! {
             write_checkpoint_resp2.is_ok(),
@@ -1216,7 +1214,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_ciper};
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_cipher};
         let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
         assert! {
             write_checkpoint_resp.is_ok(),
@@ -1243,7 +1241,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_ciper};
+        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_cipher};
         let write_checkpoint_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg2);
         assert! {
             write_checkpoint_resp2.is_ok(),
@@ -1337,7 +1335,7 @@ mod tests {
             "Commit Response Failed"
         }
 
-        let write_checkpoint_msg3 = ExecuteMsg::WriteCheckpoint{cipher: process_answer3.checkpoint_ciper};
+        let write_checkpoint_msg3 = ExecuteMsg::WriteCheckpoint{cipher: process_answer3.checkpoint_cipher};
         let write_checkpoint_resp3 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg3);
         assert! {
             write_checkpoint_resp3.is_ok(),

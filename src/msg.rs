@@ -86,5 +86,5 @@ pub struct GetRequestAnswer {
 #[cw_serde]
 pub struct ProcessResponseAnswer {
     pub request_cipher: Binary,
-    pub checkpoint_ciper: Binary
+    pub checkpoint_cipher: Binary
 }
