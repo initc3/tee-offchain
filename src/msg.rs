@@ -48,7 +48,9 @@ pub enum QueryMsg {
         old_mac: Binary,
     },
 
-    GetBalance{},
+    GetBalance{
+        address: Addr
+    },
 
     GetRequest {
         seqno: Uint128
