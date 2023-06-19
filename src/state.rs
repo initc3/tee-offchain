@@ -104,7 +104,8 @@ impl ResponseState {
 #[cw_serde]
 pub struct CheckPoint {
     pub checkpoint: Vec<AddressBalance>,
-    pub seqno: Uint128
+    pub seqno: Uint128,
+    pub resp_seqno: Uint128,
 }
 
 impl CheckPoint {
