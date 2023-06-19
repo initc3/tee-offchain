@@ -5,6 +5,7 @@ use crate::state::{State, ReqType, CheckPoint, Request, ResponseState, AddressBa
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
 use crate::utils::{get_key, bool_to_uint128};
 use cosmwasm_std::ReplyOn::Success;
+use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
 
 #[entry_point]
 pub fn instantiate(
@@ -106,6 +107,21 @@ pub fn execute(
                 env,
                 info,
                 cipher
+        ),
+        ExecuteMsg::CreateViewingKey { 
+            entropy
+        } => try_create_key(
+            deps, 
+            env, 
+            info, 
+            entropy
+        ),
+        ExecuteMsg::SetViewingKey { 
+            key
+        } => try_set_key(
+            deps, 
+            info, 
+            key
         ),
     };
     res
@@ -300,6 +316,27 @@ fn try_write_checkpoint(
     Ok(Response::default())
 }
 
+pub fn try_create_key(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    entropy: String,
+) -> StdResult<Response> {
+    let key = ViewingKey::create(
+        deps.storage,
+        &info,
+        &env,
+        info.sender.as_str(),
+        entropy.as_ref(),
+    );
+    Ok(Response::new().set_data(to_binary(&key)?))
+}
+
+pub fn try_set_key(deps: DepsMut, info: MessageInfo, key: String) -> StdResult<Response> {
+    ViewingKey::set(deps.storage, info.sender.as_str(), key.as_str());
+    Ok(Response::default())
+}
+
 // ---------------------------------------- QUERIES --------------------------------------
 
 #[entry_point]
@@ -321,8 +358,9 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
             cipher
         } => process_request(deps, env, cipher),
         QueryMsg::GetBalance {
-            address
-        } => get_balance(deps, env, address)
+            address,
+            key
+        } => get_balance(deps, env, address, key)
     }
 }
 
@@ -440,8 +478,13 @@ fn get_checkpoint(
 fn get_balance(
     deps: Deps,
     _env: Env,
-    address: Addr
+    address: Addr,
+    key: String
 ) -> StdResult<Binary> {
+    let result = ViewingKey::check(deps.storage, address.as_str(), key.as_str());
+    if result.is_err() {
+        return Err(StdError::generic_err("Viewing key is incorrect"));
+    }
 
     let checkpoint = CheckPoint::load(deps.storage)?;
     // println!("get_balance checkpoint {:?}", checkpoint);
@@ -746,6 +789,25 @@ mod tests {
         }
 
         let mock_depositer = mock_info("depositer", &[]);
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk.clone()
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
         assert!{
@@ -753,7 +815,7 @@ mod tests {
             "Did not fail with insufficient funds"
         }
 
-        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.sender };
+        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.sender, key: vk};
         let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
         assert!{
             get_checkpoint_resp.is_ok(),
@@ -767,7 +829,47 @@ mod tests {
     }
 
     #[test]
+    fn test_vk() {
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert! {
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        // let answer: ExecuteAnswer = from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
+        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env, mocked_info, set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+    }
+
+    #[test]
     fn test_deposit() {
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert! {
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
         let mocked_env = mock_env();
         let mut mock_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
@@ -790,6 +892,25 @@ mod tests {
             denom: "uscrt".to_string(),
             amount: Uint128::new(1000),
         }]);
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk.clone()
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
         assert! {
@@ -797,8 +918,8 @@ mod tests {
             "Submit Deposit Failed"
         }
 
-        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender};
-        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
+        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender, key: vk};
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp.is_ok(),
             "Get Balance Failed"
@@ -832,8 +953,7 @@ mod tests {
             "Write Checkpoint Failed"
         }
 
-        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2);
+        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
         assert!{
             get_balance_resp2.is_ok(),
             "Get Balance Failed"
@@ -869,6 +989,25 @@ mod tests {
             denom: "uscrt".to_string(),
             amount: Uint128::new(1000),
         }]);
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk.clone()
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
         assert! {
@@ -876,14 +1015,13 @@ mod tests {
             "Submit Deposit Failed"
         }
 
-        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
+        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender, key: vk };
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp.is_ok(),
             "Get Balance Failed"
         }
         let balance: Uint128 = from_binary(&get_balance_resp.unwrap()).unwrap();
-        // println!("balance {:?}", balance);
         assert!(
             Uint128::zero() == balance,
             "Balance should be 0 before Response Commit"
@@ -893,6 +1031,25 @@ mod tests {
             denom: "uscrt".to_string(),
             amount: Uint128::new(2000),
         }]);
+
+        let create_vk_msg2 = ExecuteMsg::CreateViewingKey {
+            entropy: "yo2".to_string()
+        };
+        let create_vk_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), create_vk_msg2);
+        assert! {
+            create_vk_resp2.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk2: String = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg2 = ExecuteMsg::SetViewingKey {
+            key: vk2.clone()
+        };
+        let set_vk_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), set_vk_msg2);
+        assert! {
+            set_vk_resp2.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg2 = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), request_deposit_msg2);
         assert! {
@@ -900,8 +1057,8 @@ mod tests {
             "Submit 2nd Deposit Failed"
         }
 
-        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2);
+        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender, key: vk2.clone() };
+        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
         assert!{
             get_balance_resp2.is_ok(),
             "Get 2nd Balance Failed"
@@ -963,8 +1120,7 @@ mod tests {
             "Write Checkpoint Failed"
         }
 
-        let get_balance_msg3 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg3);
+        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp3.is_ok(),
             "Get Balance Failed"
@@ -976,8 +1132,7 @@ mod tests {
             "Balance should be 1000 after Response Commit"
         );
 
-        let get_balance_msg4 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender };
-        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg4);
+        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
         assert!{
             get_balance_resp4.is_ok(),
             "Get Balance Failed"
@@ -1016,6 +1171,25 @@ mod tests {
             denom: "uscrt".to_string(),
             amount: Uint128::new(1000),
         }]);
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk.clone()
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
         assert! {
@@ -1023,8 +1197,8 @@ mod tests {
             "Submit Deposit Failed"
         }
 
-        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
+        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender, key: vk.clone() };
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp.is_ok(),
             "Get Balance Failed"
@@ -1059,8 +1233,7 @@ mod tests {
             "Write Checkpoint Failed"
         }
 
-        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2);
+        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp2.is_ok(),
             "Get Balance Failed"
@@ -1078,8 +1251,7 @@ mod tests {
             request_withdraw_resp.is_ok(),
             "Submit Withdraw Failed"
         }
-        let get_balance_resp3 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_resp3);
+        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp3.is_ok(),
             "Get Balance Failed"
@@ -1119,8 +1291,7 @@ mod tests {
             "Write Checkpoint Failed"
         }
 
-        let get_balance_resp4 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_resp4);
+        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp4.is_ok(),
             "Get Balance Failed"
@@ -1155,6 +1326,25 @@ mod tests {
             denom: "uscrt".to_string(),
             amount: Uint128::new(1000),
         }]);
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk.clone()
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
         assert! {
@@ -1162,8 +1352,8 @@ mod tests {
             "Submit Deposit Failed"
         }
 
-        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
+        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender, key: vk };
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp.is_ok(),
             "Get Balance Failed"
@@ -1179,6 +1369,25 @@ mod tests {
             denom: "uscrt".to_string(),
             amount: Uint128::new(2000),
         }]);
+
+        let create_vk_msg2 = ExecuteMsg::CreateViewingKey {
+            entropy: "yo2".to_string()
+        };
+        let create_vk_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), create_vk_msg2);
+        assert! {
+            create_vk_resp2.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk2: String = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg2 = ExecuteMsg::SetViewingKey {
+            key: vk2.clone()
+        };
+        let set_vk_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), set_vk_msg2);
+        assert! {
+            set_vk_resp2.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
         let request_deposit_msg2 = ExecuteMsg::SubmitDeposit{};
         let request_deposit_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), request_deposit_msg2);
         assert! {
@@ -1186,8 +1395,8 @@ mod tests {
             "Submit 2nd Deposit Failed"
         }
 
-        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2);
+        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender, key: vk2 };
+        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
         assert!{
             get_balance_resp2.is_ok(),
             "Get 2nd Balance Failed"
@@ -1247,9 +1456,7 @@ mod tests {
             write_checkpoint_resp2.is_ok(),
             "Write Checkpoint Failed"
         }
-
-        let get_balance_msg3 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg3);
+        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp3.is_ok(),
             "Get Balance Failed"
@@ -1262,8 +1469,7 @@ mod tests {
             "Balance should be 1000 after Response Commit"
         );
 
-        let get_balance_msg4 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender };
-        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg4);
+        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
         assert!{
             get_balance_resp4.is_ok(),
             "Get Balance Failed"
@@ -1284,8 +1490,7 @@ mod tests {
             "Submit Transfer Failed"
         }
 
-        let get_balance_msg3 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg3);
+        let get_balance_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp3.is_ok(),
             "Get 3rd Balance Failed"
@@ -1299,8 +1504,7 @@ mod tests {
         );
 
 
-        let get_balance_msg4 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender };
-        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg4);
+        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
         assert!{
             get_balance_resp4.is_ok(),
             "Get 4th Balance Failed"
@@ -1343,8 +1547,7 @@ mod tests {
         }
 
 
-        let get_balance_msg5 = QueryMsg::GetBalance{ address: mock_depositer.clone().sender };
-        let get_balance_resp5 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg5);
+        let get_balance_resp5 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
         assert!{
             get_balance_resp5.is_ok(),
             "Get 5th Balance Failed"
@@ -1357,9 +1560,7 @@ mod tests {
             "Balance should updated after Response Commit"
         );
 
-
-        let get_balance_msg6 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender };
-        let get_balance_resp6 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg6);
+        let get_balance_resp6 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
         assert!{
             get_balance_resp6.is_ok(),
             "Get 6th Balance Failed"

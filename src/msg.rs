@@ -32,7 +32,13 @@ pub enum ExecuteMsg {
 
     WriteCheckpoint {
         cipher: Binary       
-    }
+    },
+    CreateViewingKey {
+        entropy: String
+    },
+    SetViewingKey {
+        key: String
+    },
 
 }
 
@@ -49,7 +55,8 @@ pub enum QueryMsg {
     },
 
     GetBalance{
-        address: Addr
+        address: Addr,
+        key: String
     },
 
     GetRequest {
