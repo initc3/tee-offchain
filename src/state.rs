@@ -68,6 +68,7 @@ impl Request {
     }
 }
 impl ResponseState {
+
     pub fn decrypt_response(store: &dyn Storage, cipher: Binary) -> StdResult<ResponseState> {
         let key = AEAD_KEY.load(store).unwrap();
         let cipher_vec: Vec<u8> = from_binary(&cipher).unwrap();
