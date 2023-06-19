@@ -4,7 +4,6 @@ use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, 
 use crate::state::{State, ReqType, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
 use crate::utils::{get_key, bool_to_uint128};
-use cosmwasm_std::ReplyOn::Success;
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
 
 #[entry_point]
@@ -547,6 +546,7 @@ fn process_request(
                 checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
             }
             let balance_ok_int = bool_to_uint128(balance_ok);
+            println!("process_request withdraw {:?} balance_ok {:?}", request.from,  balance_ok);
             ResponseState {
                 seqno: seqno,
                 status: balance_ok,
@@ -573,6 +573,7 @@ fn process_request(
                 let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
                 checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
             }
+            println!("process_request transfer from {:?} to {:?} balance_ok {:?}", request.from, request.to, balance_ok);
             ResponseState {
                 seqno: seqno,
                 status: balance_ok,
@@ -637,10 +638,9 @@ fn gen_mac(key: Binary, data_blob: Binary) -> StdResult<Binary> {
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{from_binary, StdResult, Uint128, Coin, QueryResponse, StdError, Binary};
-    use crate::contract::{get_checkpoint, gen_hash, gen_mac, instantiate, query, execute};
+    use cosmwasm_std::{from_binary, StdResult, Uint128, Coin, StdError, Binary};
+    use crate::contract::{gen_hash, gen_mac, instantiate, query, execute};
     use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, ProcessResponseAnswer};
-    use crate::state::{CheckPoint};
     // use std::any::Any;
     // use cosmwasm_std::testing::*;
 
