@@ -59,6 +59,7 @@ jobs:
           file: Dockerfile
           target: contract.wasm.gz
           builder: ${{ steps.buildx.outputs.name }}
+          outputs: type=local,dest=artifacts
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.short_sha }},
             ${{ env.IMAGE_NAME }}:latest,
