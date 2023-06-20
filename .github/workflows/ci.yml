@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@1.63
         with:
           target: wasm32-unknown-unknown
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Set Short SHA
         id: vars
         run: echo "::set-output name=short_sha::$(git rev-parse --short HEAD)"
