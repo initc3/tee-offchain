@@ -57,7 +57,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          target: contract.wasm.gz
+          target: artifacts
           builder: ${{ steps.buildx.outputs.name }}
           outputs: type=local,dest=artifacts
           tags: |
