@@ -66,7 +66,7 @@ store-contract-local:
 .PHONY: contract
 contract:
 	DOCKER_BUILDKIT=1 docker build \
-			--target artifact \
+			--target artifacts \
       --tag tee-offchain:artifact \
 			--output type=local,dest=artifacts \
 			.
