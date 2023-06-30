@@ -1,12 +1,10 @@
 use cosmwasm_std::{entry_point, Binary, Deps, DepsMut, Env, MessageInfo, Response, Storage, Uint128, StdResult, ensure, StdError, to_binary};
 use sha2::{Sha256, Digest};
-use hmac::{Hmac, Mac};
-use schemars::_serde_json::to_string;
+// use hmac::{Hmac, Mac};
+// use schemars::_serde_json::to_string;
 
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 use crate::state::{State, CONFIG_KEY};
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[entry_point]
 pub fn instantiate(
@@ -235,7 +233,7 @@ fn gen_mac(key: Binary, data_blob: Binary) -> StdResult<Binary> {
 mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_binary, StdResult, Uint128};
-    use crate::contract::{gen_hash, gen_mac, instantiate, query};
+    use crate::contract::{execute, gen_hash, gen_mac, instantiate, query};
     use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg};
 
     #[test]
@@ -244,7 +242,7 @@ mod tests {
         let mut mocked_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
 
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
+        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg { entropy: Default::default() }).unwrap();
 
         let query_msg = QueryMsg::GetState {};
 
@@ -262,20 +260,22 @@ mod tests {
         let mocked_env = mock_env();
         let mut mocked_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
+        let vrf_entropy = &mocked_env.block.random.clone().unwrap();
 
-        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg {}).unwrap();
+        let resp = instantiate(mocked_deps.as_mut(), mocked_env, mocked_info, InstantiateMsg { entropy: vrf_entropy.clone() }).unwrap();
 
         let query_msg = QueryMsg::GetState {};
 
         let mocked_env = mock_env();
         let query_resp = query(mocked_deps.as_ref(), mocked_env, query_msg).unwrap();
 
-        let query_as_struct: GetStateAnswer = from_binary(&query_resp).unwrap();
+        let query_as_struct: StdResult<GetStateAnswer> = from_binary(&query_resp);
+        let query_as_struct_unwrapped = &query_as_struct.unwrap();
 
         let iterate_hash = QueryMsg::IterateHash {
-            counter: query_as_struct.counter,
-            current_hash: query_as_struct.current_hash,
-            old_mac: query_as_struct.current_mac,
+            counter: query_as_struct_unwrapped.counter.clone(),
+            current_hash: query_as_struct_unwrapped.current_hash.clone(),
+            old_mac: query_as_struct_unwrapped.current_mac.clone(),
         };
 
         //println!("test> old_mac: {:?}", old_mac);
@@ -283,22 +283,36 @@ mod tests {
         // Try cranking the contract a few times
         let mocked_env = mock_env();
         let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
-        let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
+        let iterate_hash_resp: IterateHashAnswer = from_binary(&iterate_hash_resp).unwrap();
 
-        //let applyUpdate = ExecuteMsg::ApplyUpdate {
-        //    new_counter: iterate_hash_resp.new_counter,
-        //    new_hash: iterate_hash_resp.new_hash,
-        //    current_mac: iterate_hash_resp.new_mac,
-        //};
-        //let mocked_env = mock_env();
-        //let apply_update_resp = execute(mocked_deps.as_mut(), mocked_env, applyUpdate).unwrap();
+        let applyUpdate = ExecuteMsg::ApplyUpdate {
+           new_counter: iterate_hash_resp.new_counter,
+           new_hash: iterate_hash_resp.new_hash,
+           current_mac: iterate_hash_resp.new_mac,
+        };
 
-        assert! {
-            iterate_hash_resp.is_ok(),
-            "WE FAILED TO UNBASE64 TO THE STRUCT"
-        }
+        let mocked_env = mock_env();
+        let mocked_info = mock_info("owner", &[]);
 
-        let iterate_hash_resp = iterate_hash_resp.unwrap();
+        let apply_update_resp = execute(mocked_deps.as_mut(), mocked_env, mocked_info, applyUpdate);
+
+        println!("{:?}", apply_update_resp.err().unwrap());
+
+        // assert! {
+        //     apply_update_resp.is_ok(),
+        //     "WE FAILED TO UNBASE64 TO THE STRUCT"
+        // }
+
+        let iterate_hash = QueryMsg::IterateHash {
+            counter: query_as_struct_unwrapped.counter.clone(),
+            current_hash: query_as_struct_unwrapped.current_hash.clone(),
+            old_mac: query_as_struct_unwrapped.current_mac.clone(),
+        };
+
+        let mocked_env = mock_env();
+        let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
+        let iterate_hash_resp: IterateHashAnswer = from_binary(&iterate_hash_resp).unwrap();
+
 
         let iterate_hash = QueryMsg::IterateHash {
             counter: iterate_hash_resp.new_counter,
@@ -310,15 +324,14 @@ mod tests {
 
         let mocked_env = mock_env();
         let iterate_hash_resp = query(mocked_deps.as_ref(), mocked_env, iterate_hash).unwrap();
-        assert!(true);
-        //let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
+        let iterate_hash_resp: StdResult<IterateHashAnswer> = from_binary(&iterate_hash_resp);
 
-        //assert! {
-        //    iterate_hash_resp.is_ok(),
-        //    "WE FAILED TO UNBASE64 TO THE STRUCT"
-        //}
+        assert! {
+           iterate_hash_resp.is_ok(),
+           "WE FAILED TO UNBASE64 TO THE STRUCT"
+        }
 
-        //println!("{:?}", iterate_hash_resp.unwrap())
+        println!("{:?}", iterate_hash_resp.unwrap())
     }
 
     #[test]
