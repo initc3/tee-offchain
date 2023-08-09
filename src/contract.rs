@@ -1,7 +1,7 @@
 use cosmwasm_std::{Coin, entry_point, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, StdResult, ensure, StdError, to_binary, Addr, CosmosMsg};
 use sha2::{Sha256, Digest};
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
-use crate::state::{State, ReqType, CheckPoint, Request, ResponseState, AddressBalance};
+use crate::state::{State, RequestType, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
 use crate::utils::{get_key, bool_to_uint128, get_prng};
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
@@ -182,7 +182,7 @@ fn try_submit_deposit(
     }
 
     let request = Request {
-        reqtype: ReqType::DEPOSIT,
+        reqtype: RequestType::DEPOSIT,
         from: info.sender,
         to: None,
         amount: amount,
@@ -212,7 +212,7 @@ fn try_submit_transfer(
     //TODO save amount in contract
 
     let request = Request {
-        reqtype: ReqType::TRANSFER,
+        reqtype: RequestType::TRANSFER,
         from: info.sender,
         to: Some(to),
         amount: amount,
@@ -239,7 +239,7 @@ fn try_submit_withdraw(
     }
 
     let request = Request {
-        reqtype: ReqType::WITHDRAW,
+        reqtype: RequestType::WITHDRAW,
         from: info.sender,
         to: None,
         amount: amount,
@@ -280,7 +280,7 @@ fn try_commit_response(
     println!("try_commit_response load at seqno {:?}", response.seqno);
 
     let request = Request::load(deps.storage, response.seqno).unwrap();
-    if request.reqtype == ReqType::WITHDRAW {
+    if request.reqtype == RequestType::WITHDRAW {
         let withdrawal_coins: Vec<Coin> = vec![Coin {
             denom: "uscrt".to_string(),
             amount: response.amount,
@@ -467,7 +467,7 @@ fn get_checkpoint(
 ) -> StdResult<Binary> {
 
     let checkpoint = CheckPoint::load(deps.storage)?;
-    let mut prng = get_prng(env);
+    let mut prng = get_prng(checkpoint.seqno, env);
     let cipher = CheckPoint::encrypt_checkpoint(deps.storage, &mut prng, checkpoint)?;
 
     let resp_as_b64 = to_binary(&cipher).unwrap();
@@ -508,19 +508,19 @@ fn process_request(
     let seqno = checkpoint.resp_seqno;
     println!("process_request seqno {:?}", seqno);
     let request = Request::load(deps.storage, seqno).unwrap();
-    let mut found: bool = false;
+    let mut found_from: bool = false;
     for i in 0..checkpoint.checkpoint.len() {
         let a = checkpoint.checkpoint.get_mut(i).unwrap();
         if a.address == request.from {
-            found = true;
+            found_from = true;
         }
     }
-    if !found {
+    if !found_from {
         let a = AddressBalance{balance: Uint128::zero(), address: request.from.clone()};
         checkpoint.checkpoint.push(a);
     }
     let response = match request.reqtype {
-        ReqType::DEPOSIT {} => {
+        RequestType::DEPOSIT {} => {
             for i in 0..checkpoint.checkpoint.len() {
                 let a = checkpoint.checkpoint.get_mut(i).unwrap();
                 let b: bool = a.address == request.from;
@@ -535,7 +535,7 @@ fn process_request(
                 response: String::default()
             }
         },
-        ReqType::WITHDRAW {} => {
+        RequestType::WITHDRAW {} => {
             let mut balance_ok: bool = true;
             for i in 0..checkpoint.checkpoint.len() {
                 let a = checkpoint.checkpoint.get_mut(i).unwrap();
@@ -555,7 +555,7 @@ fn process_request(
                 response: String::default()
             }
         },
-        ReqType::TRANSFER => {
+        RequestType::TRANSFER => {
             let mut balance_ok: bool = true;
             for i in 0..checkpoint.checkpoint.len() {
                 let a = checkpoint.checkpoint.get_mut(i).unwrap();
@@ -574,19 +574,29 @@ fn process_request(
                 let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
                 checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
             }
+        
             println!("process_request transfer from {:?} to {:?} balance_ok {:?}", request.from, request.to, balance_ok);
-            ResponseState {
-                seqno: seqno,
-                status: balance_ok,
-                amount: Uint128::zero(),
-                response: String::from("Transfer ok")
+            if balance_ok {
+                ResponseState {
+                    seqno: seqno,
+                    status: balance_ok,
+                    amount: Uint128::zero(),
+                    response: String::from("Transfer ok")
+                }
+            } else {
+                ResponseState {
+                    seqno: seqno,
+                    status: balance_ok,
+                    amount: Uint128::zero(),
+                    response: String::from("Transfer failed")
+                }
             }
         }
     };
     checkpoint.seqno = checkpoint.seqno.checked_add(Uint128::one()).unwrap();
     checkpoint.resp_seqno = checkpoint.resp_seqno.checked_add(Uint128::one()).unwrap();
     println!("process_request requrning checkpoint {:?}", checkpoint);
-    let mut prng = get_prng(env);
+    let mut prng = get_prng(checkpoint.seqno, env);
 
     let resp_cipher = ResponseState::encrypt_response(deps.storage, &mut prng, response).unwrap();
     let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, &mut prng, checkpoint).unwrap();
@@ -972,7 +982,7 @@ mod tests {
 
 
     #[test]
-    fn test_depose_multi() {
+    fn test_deposit_multi() {
         let mocked_env = mock_env();
         let mut mock_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
@@ -1991,6 +2001,192 @@ mod tests {
         assert!(
             Uint128::new(2000) == balance6,
             "Balance should not updated after Response Commit"
+        );
+    }
+
+    #[test]
+    fn test_transfer_no_receiver() {
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert! {
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
+        let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
+        let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg);
+
+        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
+
+        let mock_depositer = mock_info("depositer", &[Coin {
+            denom: "uscrt".to_string(),
+            amount: Uint128::new(1000),
+        }]);
+
+        let mock_depositer2 = mock_info("depositer2", &[Coin {
+            denom: "uscrt".to_string(),
+            amount: Uint128::new(2000),
+        }]);
+
+        let create_vk_msg2 = ExecuteMsg::CreateViewingKey {
+            entropy: "yo2".to_string()
+        };
+        let create_vk_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), create_vk_msg2);
+        assert! {
+            create_vk_resp2.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+        let vk2: String = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let set_vk_msg2 = ExecuteMsg::SetViewingKey {
+            key: vk2.clone()
+        };
+        let set_vk_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), set_vk_msg2);
+        assert! {
+            set_vk_resp2.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
+        let request_deposit_msg2 = ExecuteMsg::SubmitDeposit{};
+        let request_deposit_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), request_deposit_msg2);
+        assert! {
+            request_deposit_resp2.is_ok(),
+            "Submit 2nd Deposit Failed"
+        }
+
+        let get_balance_msg2 = QueryMsg::GetBalance{ address: mock_depositer2.clone().sender, key: vk2 };
+        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
+        assert!{
+            get_balance_resp2.is_ok(),
+            "Get 2nd Balance Failed"
+        }
+        let balance2: Uint128 = from_binary(&get_balance_resp2.unwrap()).unwrap();
+        println!("balance of depositor2 BEFORE COMMIT DEPOSIT {:?}", balance2);
+        assert!(
+            Uint128::zero() == balance2,
+            "Balance should be 0 before Response Commit"
+        );
+
+        let process_next_msg = QueryMsg::ProcessNext{ cipher: checkpoint_cipher };
+        let process_next_resp = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg);
+        assert!{
+            process_next_resp.is_ok(),
+            "Process Next Failed"
+        }
+        let process_answer: ProcessResponseAnswer = from_binary(&process_next_resp.unwrap()).unwrap();
+
+        let commit_response_msg = ExecuteMsg::CommitResponse{cipher: process_answer.request_cipher};
+        let commit_response_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg);
+        assert! {
+            commit_response_resp.is_ok(),
+            "Commit Response Failed"
+        }
+
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_cipher};
+        let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
+        assert! {
+            write_checkpoint_resp.is_ok(),
+            "Write Checkpoint Failed"
+        }
+
+        let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
+
+        let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
+        let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
+/*
+        let process_next_msg2 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher2 };
+        let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
+        assert!{
+            process_next_resp2.is_ok(),
+            "Process Next Failed"
+        }
+        let process_answer2: ProcessResponseAnswer = from_binary(&process_next_resp2.unwrap()).unwrap();
+
+        let commit_response_msg2 = ExecuteMsg::CommitResponse{cipher: process_answer2.request_cipher};
+        let commit_response_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg2);
+        assert! {
+            commit_response_resp2.is_ok(),
+            "Commit Response Failed"
+        }
+
+        let write_checkpoint_msg2 = ExecuteMsg::WriteCheckpoint{cipher: process_answer2.checkpoint_cipher};
+        let write_checkpoint_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg2);
+        assert! {
+            write_checkpoint_resp2.is_ok(),
+            "Write Checkpoint Failed"
+        }
+*/
+        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
+        assert!{
+            get_balance_resp4.is_ok(),
+            "Get Balance Failed"
+        }
+        let balance2: Uint128 = from_binary(&get_balance_resp4.unwrap()).unwrap();
+        println!("balance of depositor2 AFTER COMMIT DEPOSIT {:?}", balance2);
+        assert!(
+            Uint128::new(2000) == balance2,
+            "Balance should be 2000 after Response Commit"
+        );
+
+
+        let request_transfer = ExecuteMsg::SubmitTransfer{to: mock_depositer.clone().sender, amount: Uint128::new(500), memo: String::from("hello")};
+        let request_transfer_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer2.clone(), request_transfer);
+        assert! {
+            request_transfer_resp.is_ok(),
+            "Submit Transfer Failed"
+        }
+
+        let get_balance_resp4 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
+        assert!{
+            get_balance_resp4.is_ok(),
+            "Get 4th Balance Failed"
+        }
+        let balance4: Uint128 = from_binary(&get_balance_resp4.unwrap()).unwrap();
+        // println!("balance of depositor2 {:?}", balance4);
+        assert!(
+            Uint128::new(2000) == balance4,
+            "Balance should same before Response Commit"
+        );
+
+
+        let get_checkpoint_msg3 = QueryMsg::GetCheckpoint{};
+
+        let get_checkpoint_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg3);
+        let checkpoint_cipher3: Binary = from_binary(&get_checkpoint_resp3.unwrap().clone()).unwrap();
+
+        let process_next_msg3 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher3 };
+        let process_next_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg3);
+        assert!{
+            process_next_resp3.is_ok(),
+            "Process Next Failed"
+        }
+        let process_answer3: ProcessResponseAnswer = from_binary(&process_next_resp3.unwrap()).unwrap();
+
+        let commit_response_msg3 = ExecuteMsg::CommitResponse{cipher: process_answer3.request_cipher};
+        let commit_response_resp3 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg3);
+        assert! {
+            commit_response_resp3.is_ok(),
+            "Commit Response Failed"
+        }
+
+        let write_checkpoint_msg3 = ExecuteMsg::WriteCheckpoint{cipher: process_answer3.checkpoint_cipher};
+        let write_checkpoint_resp3 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg3);
+        assert! {
+            write_checkpoint_resp3.is_ok(),
+            "Write Checkpoint Failed"
+        }
+
+        let get_balance_resp6 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg2.clone());
+        assert!{
+            get_balance_resp6.is_ok(),
+            "Get 6th Balance Failed"
+        }
+        let balance6: Uint128 = from_binary(&get_balance_resp6.unwrap()).unwrap();
+        println!("balance of depositor2 AFTER COMMIT TRANSFER  {:?}", balance6);
+        assert!(
+            Uint128::new(2000) == balance6,
+            "Balance should same after Response Commit"
         );
     }
 }
