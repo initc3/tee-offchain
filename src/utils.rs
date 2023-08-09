@@ -1,7 +1,7 @@
 use ring::{aead, error};
 use secret_toolkit_crypto::ContractPrng;
 use crate::state::{SymmetricKey};
-use cosmwasm_std::{StdError, Env, Uint128};
+use cosmwasm_std::{StdError, Env, Uint128, Storage};
 use sha2::{Sha256, Digest};
 
 static AES_MODE: &aead::Algorithm = &aead::AES_256_GCM;
@@ -72,29 +72,21 @@ pub fn decrypt(cipheriv: &[u8], key: &SymmetricKey) -> Result<Vec<u8>, StdError>
     Ok(decrypted_vec)
 }
 
-pub fn get_prng(env: Env) -> ContractPrng {
+pub fn get_prng(seqno: Uint128, env: Env) -> ContractPrng {
     let entropy = env.block.random.unwrap();
-    let mut hasher = Sha256::default();
-    hasher.update(entropy.clone().as_slice());
-    let finalized_hash = hasher.finalize();
-    let prng_seed = finalized_hash.as_slice();
-    let rng = ContractPrng::new(&prng_seed, entropy.as_slice());
+    let seed: [u8;16] = seqno.to_be_bytes();
+    let rng = ContractPrng::new(&seed, entropy.as_slice());
     return rng;
 }
 
 pub fn get_nonce(prng: &mut ContractPrng) -> IV {
     let rnd_bytes = prng.rand_bytes();
-    let nonce : [u8;12] = rnd_bytes[0..12].try_into().unwrap();
+    let nonce : [u8;IV_SIZE] = rnd_bytes[0..IV_SIZE].try_into().unwrap();
     return nonce;
 }
 
 pub fn get_key(env: Env) -> SymmetricKey {
-    let entropy = env.block.random.unwrap();
-    let mut hasher = Sha256::default();
-    hasher.update(entropy.clone().as_slice());
-    let finalized_hash = hasher.finalize();
-    let prng_seed = finalized_hash.as_slice();
-    let mut rng = ContractPrng::new(&prng_seed, entropy.as_slice());
+    let mut rng = ContractPrng::from_env(&env);
     let symmetric_key: SymmetricKey = rng.rand_bytes();
     return symmetric_key;
 }

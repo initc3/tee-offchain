@@ -13,7 +13,6 @@ pub static PREFIX_REQUESTS_KEY: Item<Request> = Item::new(b"requests");
 pub static PREFIX_RESPONSE_KEY: Item<ResponseState> = Item::new(b"responses");
 pub static REQUEST_SEQNO_KEY: Item<Uint128> = Item::new(b"request_seqno");
 pub static REQUEST_LEN_KEY: Item<Uint128> = Item::new(b"request_len");
-pub static CHECKPOINT_SEQNO_KEY: Item<Uint128> = Item::new(b"check_seqno");
 pub static CHECKPOINT_KEY: Item<CheckPoint> = Item::new(b"checkpoint");
 pub static AEAD_KEY: Item<SymmetricKey> = Item::new(b"aead_key");
 
@@ -29,7 +28,7 @@ pub struct State {
 
 #[cw_serde]
 pub struct Request {
-    pub reqtype: ReqType,
+    pub reqtype: RequestType,
     pub from: Addr,
     pub to: Option<Addr>,
     pub amount: Uint128,
@@ -37,7 +36,7 @@ pub struct Request {
 }
 
 #[cw_serde]
-pub enum ReqType {
+pub enum RequestType {
     DEPOSIT,
     TRANSFER,
     WITHDRAW
