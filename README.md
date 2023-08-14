@@ -6,21 +6,43 @@ cargo test
 ```
 
 ## Build and deploy the contract on a local net
-Launch the local net
+### Launch one local node
 ```
 docker run -it -p 9091:9091 -p 26657:26657 -p 1317:1317 -p 5000:5000 \
   --name localsecret ghcr.io/scrtlabs/localsecret:latest
 ```
 
-Build and optmize the contract via a docker container with:
+### Fund a wallet
+You can view your keys like so:
+```console
+secretcli keys list
 ```
+
+If you don't have any keys, create one, e.g.:
+```console
+secretcli keys add scrtdevkey
+```
+
+Get the address
+```console
+addr=`secretcli keys list | jq .[0].address | tr -d '"'`
+```
+
+Fund it
+```console
+curl http://localhost:5000/faucet?address=$addr
+```
+
+### Build the contract
+Build and optmize the contract via a docker container with:
+```console
 make contract
 ```
-This will output a `contract.wasm.gz` file ready to be deployed.
+This will output a `contract.wasm.gz` file, under `artifacts/` ready to be deployed.
 
-Store the contract on chain
+### Store the contract on chain
 ```
-secretcli tx compute store contract.wasm.gz --gas 5000000 --from <your-address> --chain-id secretdev-1
+secretcli tx compute store artifacts/contract.wasm.gz --gas 5000000 --from $addr --chain-id secretdev-1
 ```
 
 Check
@@ -28,9 +50,9 @@ Check
 secretcli query compute list-code
 ```
 
-Instantiate the contract
+### Instantiate the contract
 ```
-secretcli tx compute instantiate 1 {} --from <your-address> --label rollupContract -y
+secretcli tx compute instantiate 1 {} --from $addr --label rollupContract -y
 ```
 
 Check
