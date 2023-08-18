@@ -28,19 +28,16 @@ pub struct State {
 
 #[cw_serde]
 pub struct Request {
-    pub reqtype: RequestType,
+    pub reqtype: Uint128,
     pub from: Addr,
     pub to: Option<Addr>,
     pub amount: Uint128,
     pub memo: Option<String>
 }
 
-#[cw_serde]
-pub enum RequestType {
-    DEPOSIT,
-    TRANSFER,
-    WITHDRAW
-}
+pub static DEPOSIT: u128 = 0u128;
+pub static TRANSFER: u128 = 1u128;
+pub static WITHDRAW: u128 = 2u128;
 
 #[cw_serde]
 pub struct ResponseState {

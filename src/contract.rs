@@ -1,7 +1,7 @@
 use cosmwasm_std::{Coin, entry_point, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, StdResult, ensure, StdError, to_binary, Addr, CosmosMsg};
 use sha2::{Sha256, Digest};
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
-use crate::state::{State, RequestType, CheckPoint, Request, ResponseState, AddressBalance};
+use crate::state::{State, DEPOSIT, WITHDRAW, TRANSFER, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
 use crate::utils::{get_key, bool_to_uint128, get_prng};
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
@@ -182,7 +182,7 @@ fn try_submit_deposit(
     }
 
     let request = Request {
-        reqtype: RequestType::DEPOSIT,
+        reqtype: Uint128::from(DEPOSIT),
         from: info.sender,
         to: None,
         amount: amount,
@@ -212,7 +212,7 @@ fn try_submit_transfer(
     //TODO save amount in contract
 
     let request = Request {
-        reqtype: RequestType::TRANSFER,
+        reqtype: Uint128::from(TRANSFER),
         from: info.sender,
         to: Some(to),
         amount: amount,
@@ -239,7 +239,7 @@ fn try_submit_withdraw(
     }
 
     let request = Request {
-        reqtype: RequestType::WITHDRAW,
+        reqtype: Uint128::from(WITHDRAW),
         from: info.sender,
         to: None,
         amount: amount,
@@ -280,7 +280,7 @@ fn try_commit_response(
     println!("try_commit_response load at seqno {:?}", response.seqno);
 
     let request = Request::load(deps.storage, response.seqno).unwrap();
-    if request.reqtype == RequestType::WITHDRAW {
+    if request.reqtype.u128() == WITHDRAW {
         let withdrawal_coins: Vec<Coin> = vec![Coin {
             denom: "uscrt".to_string(),
             amount: response.amount,
@@ -519,8 +519,15 @@ fn process_request(
         let a = AddressBalance{balance: Uint128::zero(), address: request.from.clone()};
         checkpoint.checkpoint.push(a);
     }
-    let response = match request.reqtype {
-        RequestType::DEPOSIT {} => {
+
+    let response = ResponseState {
+        seqno: seqno,
+        status: false,
+        amount: Uint128::zero(),
+        response: String::from("Type not Found")
+    };
+
+    if request.reqtype.u128() == DEPOSIT {
             for i in 0..checkpoint.checkpoint.len() {
                 let a = checkpoint.checkpoint.get_mut(i).unwrap();
                 let b: bool = a.address == request.from;
@@ -528,71 +535,68 @@ fn process_request(
                 let m = request.amount.checked_mul(b_int).unwrap();
                 checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
             }
-            ResponseState {
+            let response = ResponseState {
                 seqno: seqno,
                 status: true,
                 amount: Uint128::zero(),
                 response: String::default()
-            }
-        },
-        RequestType::WITHDRAW {} => {
-            let mut balance_ok: bool = true;
-            for i in 0..checkpoint.checkpoint.len() {
-                let a = checkpoint.checkpoint.get_mut(i).unwrap();
-                let b: bool = a.address == request.from;
-                balance_ok = balance_ok && (!b || a.balance >= request.amount);
-                let b_int = bool_to_uint128(b);
-                let balance_ok_int = bool_to_uint128(balance_ok);
-                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
-                checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
-            }
+            };
+    } else if request.reqtype.u128() == WITHDRAW {
+        let mut balance_ok: bool = true;
+        for i in 0..checkpoint.checkpoint.len() {
+            let a = checkpoint.checkpoint.get_mut(i).unwrap();
+            let b: bool = a.address == request.from;
+            balance_ok = balance_ok && (!b || a.balance >= request.amount);
+            let b_int = bool_to_uint128(b);
             let balance_ok_int = bool_to_uint128(balance_ok);
-            println!("process_request withdraw {:?} balance_ok {:?}", request.from,  balance_ok);
-            ResponseState {
+            let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+            checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
+        }
+        let balance_ok_int = bool_to_uint128(balance_ok);
+        println!("process_request withdraw {:?} balance_ok {:?}", request.from,  balance_ok);
+        let response = ResponseState {
+            seqno: seqno,
+            status: balance_ok,
+            amount: request.amount.checked_mul(balance_ok_int).unwrap(),
+            response: String::default()
+        };
+    } else if request.reqtype.u128() == TRANSFER {
+        let mut balance_ok: bool = true;
+        for i in 0..checkpoint.checkpoint.len() {
+            let a = checkpoint.checkpoint.get_mut(i).unwrap();
+            let b: bool = a.address == request.from;
+            balance_ok = balance_ok && (!b || a.balance >= request.amount);
+            let b_int = bool_to_uint128(b);
+            let balance_ok_int = bool_to_uint128(balance_ok);
+            let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+            checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
+        }
+        let balance_ok_int = bool_to_uint128(balance_ok);
+        for i in 0..checkpoint.checkpoint.len() {
+            let a = checkpoint.checkpoint.get_mut(i).unwrap();
+            let b: bool = a.address == request.to.clone().unwrap();
+            let b_int = bool_to_uint128(b);
+            let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+            checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
+        }
+    
+        println!("process_request transfer from {:?} to {:?} balance_ok {:?}", request.from, request.to, balance_ok);
+        if balance_ok {
+            let response = ResponseState {
                 seqno: seqno,
                 status: balance_ok,
-                amount: request.amount.checked_mul(balance_ok_int).unwrap(),
-                response: String::default()
-            }
-        },
-        RequestType::TRANSFER => {
-            let mut balance_ok: bool = true;
-            for i in 0..checkpoint.checkpoint.len() {
-                let a = checkpoint.checkpoint.get_mut(i).unwrap();
-                let b: bool = a.address == request.from;
-                balance_ok = balance_ok && (!b || a.balance >= request.amount);
-                let b_int = bool_to_uint128(b);
-                let balance_ok_int = bool_to_uint128(balance_ok);
-                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
-                checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
-            }
-            let balance_ok_int = bool_to_uint128(balance_ok);
-            for i in 0..checkpoint.checkpoint.len() {
-                let a = checkpoint.checkpoint.get_mut(i).unwrap();
-                let b: bool = a.address == request.to.clone().unwrap();
-                let b_int = bool_to_uint128(b);
-                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
-                checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
-            }
-        
-            println!("process_request transfer from {:?} to {:?} balance_ok {:?}", request.from, request.to, balance_ok);
-            if balance_ok {
-                ResponseState {
-                    seqno: seqno,
-                    status: balance_ok,
-                    amount: Uint128::zero(),
-                    response: String::from("Transfer ok")
-                }
-            } else {
-                ResponseState {
-                    seqno: seqno,
-                    status: balance_ok,
-                    amount: Uint128::zero(),
-                    response: String::from("Transfer failed")
-                }
-            }
+                amount: Uint128::zero(),
+                response: String::from("Transfer ok")
+            };
+        } else {
+            let response = ResponseState {
+                seqno: seqno,
+                status: balance_ok,
+                amount: Uint128::zero(),
+                response: String::from("Transfer failed")
+            };
         }
-    };
+    }
     checkpoint.seqno = checkpoint.seqno.checked_add(Uint128::one()).unwrap();
     checkpoint.resp_seqno = checkpoint.resp_seqno.checked_add(Uint128::one()).unwrap();
     println!("process_request requrning checkpoint {:?}", checkpoint);
