@@ -3,7 +3,7 @@ use sha2::{Sha256, Digest};
 use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
 use crate::state::{State, DEPOSIT, WITHDRAW, TRANSFER, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
-use crate::utils::{get_key, bool_to_uint128, get_prng};
+use crate::utils::{get_key, bool_to_uint128, get_prng, CipherText};
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
 
 #[entry_point]
@@ -92,20 +92,20 @@ pub fn execute(
                 amount
             ),
         ExecuteMsg::CommitResponse {
-            cipher
+            cipher,
         } => try_commit_response(
                 deps,
                 env,
                 info,
-                cipher
+                cipher,
             ),
         ExecuteMsg::WriteCheckpoint {
-            cipher
+            cipher,
         } => try_write_checkpoint(
                 deps,
                 env,
                 info,
-                cipher
+                cipher,
         ),
         ExecuteMsg::CreateViewingKey { 
             entropy
@@ -257,7 +257,7 @@ fn try_commit_response(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    cipher: Binary,
+    cipher: CipherText,
 ) -> StdResult<Response> {
 
     let seqno = REQUEST_SEQNO_KEY.load(deps.storage).unwrap();
@@ -299,7 +299,7 @@ fn try_write_checkpoint(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
-    cipher: Binary,
+    cipher: CipherText,
 ) -> StdResult<Response> {
     let new_checkpoint: CheckPoint = CheckPoint::decrypt_checkpoint(deps.storage, cipher).unwrap();
     let old_checkpoint: CheckPoint = CheckPoint::load(deps.storage).unwrap();
@@ -502,7 +502,7 @@ fn get_balance(
 fn process_request(
     deps: Deps,
     env: Env,
-    cipher: Binary
+    cipher: CipherText,
 )-> StdResult<Binary> {
     let mut checkpoint: CheckPoint = CheckPoint::decrypt_checkpoint(deps.storage, cipher).unwrap();
     let seqno = checkpoint.resp_seqno;
@@ -657,6 +657,8 @@ mod tests {
     use cosmwasm_std::{from_binary, StdResult, Uint128, Coin, StdError, Binary};
     use crate::contract::{gen_hash, gen_mac, instantiate, query, execute};
     use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, ProcessResponseAnswer};
+    use crate::utils::CipherText;
+
     // use std::any::Any;
     // use cosmwasm_std::testing::*;
 
@@ -902,7 +904,7 @@ mod tests {
             "Get Checkpoint Failed"
         }
 
-        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
+        let checkpoint_cipher: CipherText = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
 
         let mock_depositer = mock_info("depositer", &[Coin {
             denom: "uscrt".to_string(),
@@ -999,7 +1001,7 @@ mod tests {
         let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
         let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg);
 
-        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
+        let checkpoint_cipher: CipherText = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
 
         let mock_depositer = mock_info("depositer", &[Coin {
             denom: "uscrt".to_string(),
@@ -1120,7 +1122,7 @@ mod tests {
         // let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
 
         // let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
-        // let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
+        // let checkpoint_cipher2: CipherText = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
 
         let commit_response_msg2 = ExecuteMsg::CommitResponse{cipher: process_answer2.request_cipher};
         let commit_response_resp2 = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg2);
@@ -1181,7 +1183,7 @@ mod tests {
             "Get Checkpoint Failed"
         }
 
-        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
+        let checkpoint_cipher: CipherText = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
 
         let mock_depositer = mock_info("depositer", &[Coin {
             denom: "uscrt".to_string(),
@@ -1283,7 +1285,7 @@ mod tests {
         let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
 
         let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
-        let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
+        let checkpoint_cipher2: CipherText = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
 
         let process_next_msg2 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher2 };
         let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
@@ -1339,7 +1341,7 @@ mod tests {
             "Get Checkpoint Failed"
         }
 
-        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
+        let checkpoint_cipher: CipherText = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
 
         let mock_depositer = mock_info("depositer", &[Coin {
             denom: "uscrt".to_string(),
@@ -1440,7 +1442,7 @@ mod tests {
         let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
 
         let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
-        let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
+        let checkpoint_cipher2: CipherText = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
 
         let process_next_msg2 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher2 };
         let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
@@ -1492,7 +1494,7 @@ mod tests {
         let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
         let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg);
 
-        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
+        let checkpoint_cipher: CipherText = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
 
         let mock_depositer = mock_info("depositer", &[Coin {
             denom: "uscrt".to_string(),
@@ -1605,7 +1607,7 @@ mod tests {
         let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
 
         let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
-        let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
+        let checkpoint_cipher2: CipherText = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
 
         let process_next_msg2 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher2 };
         let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
@@ -1694,7 +1696,7 @@ mod tests {
         let get_checkpoint_msg3 = QueryMsg::GetCheckpoint{};
 
         let get_checkpoint_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg3);
-        let checkpoint_cipher3: Binary = from_binary(&get_checkpoint_resp3.unwrap().clone()).unwrap();
+        let checkpoint_cipher3: CipherText = from_binary(&get_checkpoint_resp3.unwrap().clone()).unwrap();
 
         let process_next_msg3 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher3 };
         let process_next_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg3);
@@ -1759,7 +1761,7 @@ mod tests {
         let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
         let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg);
 
-        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
+        let checkpoint_cipher: CipherText = from_binary(&get_checkpoint_resp.unwrap().clone()).unwrap();
 
         let mock_depositer = mock_info("depositer", &[Coin {
             denom: "uscrt".to_string(),
@@ -1872,7 +1874,7 @@ mod tests {
         let get_checkpoint_msg2 = QueryMsg::GetCheckpoint{};
 
         let get_checkpoint_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg2);
-        let checkpoint_cipher2: Binary = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
+        let checkpoint_cipher2: CipherText = from_binary(&get_checkpoint_resp2.unwrap().clone()).unwrap();
 
         let process_next_msg2 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher2 };
         let process_next_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg2);
@@ -1957,7 +1959,7 @@ mod tests {
         let get_checkpoint_msg3 = QueryMsg::GetCheckpoint{};
 
         let get_checkpoint_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg3);
-        let checkpoint_cipher3: Binary = from_binary(&get_checkpoint_resp3.unwrap().clone()).unwrap();
+        let checkpoint_cipher3: CipherText = from_binary(&get_checkpoint_resp3.unwrap().clone()).unwrap();
 
         let process_next_msg3 = QueryMsg::ProcessNext{ cipher: checkpoint_cipher3 };
         let process_next_resp3 = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg3);

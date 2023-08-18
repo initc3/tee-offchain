@@ -3,7 +3,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Binary, Uint128, Env, StdResult, Storage, StdError, to_binary, from_binary};
 use secret_toolkit::storage::Item;
 use secret_toolkit_crypto::ContractPrng;
-use crate::utils::{encrypt_with_nonce, decrypt, get_nonce, get_prng};
+use crate::utils::{encrypt_with_nonce, decrypt_with_nonce, get_nonce, get_prng, CipherText, IV_SIZE};
 
 /// Basic configuration struct
 pub static CONFIG_KEY: Item<State> = Item::new(b"config");
@@ -66,12 +66,15 @@ impl Request {
 }
 impl ResponseState {
 
-    pub fn decrypt_response(store: &dyn Storage, cipher: Binary) -> StdResult<ResponseState> {
+    pub fn decrypt_response(store: &dyn Storage, cipher: CipherText) -> StdResult<ResponseState> {
         let key = AEAD_KEY.load(store).unwrap();
-        let cipher_vec: Vec<u8> = from_binary(&cipher).unwrap();
+        let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
         let cipher_slice: &[u8] = cipher_vec.as_slice();
+        let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
+        let nonce_slice = nonce_vec.as_slice();
+        let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
         // println!("decrypting cipher_vec {:?}", cipher_slice);
-        let response_slice = decrypt(cipher_slice, &key).unwrap();
+        let response_slice = decrypt_with_nonce(cipher_slice, &key, &nonce_slice).unwrap();
         // println!("decrypted response_slice {:?}", response_slice);
 
         let response_bin = Binary::from(response_slice);
@@ -81,7 +84,7 @@ impl ResponseState {
 
     }
 
-    pub fn encrypt_response(store: &dyn Storage, prng: &mut ContractPrng, response: ResponseState) -> StdResult<Binary> {
+    pub fn encrypt_response(store: &dyn Storage, prng: &mut ContractPrng, response: ResponseState) -> StdResult<CipherText> {
         let key = AEAD_KEY.load(store).unwrap();
         let nonce = get_nonce(prng);
 
@@ -90,11 +93,7 @@ impl ResponseState {
         let response_vec = response_bin.as_slice();
         // println!("encrypting response_vec {:?}", response_vec);
 
-        let cipher = encrypt_with_nonce(response_vec, &key, &nonce).unwrap();
-        // println!("encrypted cipher {:?}", cipher);
-        let cipher_bin = to_binary(&cipher);
-        // println!("encrypted cipher_bin {:?}", cipher_bin);
-        return cipher_bin;
+        encrypt_with_nonce(response_vec, &key, &nonce)
     }
 }
 
@@ -114,14 +113,16 @@ impl CheckPoint {
         CHECKPOINT_KEY.save(store, &checkpoint)
     }
 
-    pub fn decrypt_checkpoint(store: &dyn Storage, cipher: Binary) -> StdResult<CheckPoint> {
+    pub fn decrypt_checkpoint(store: &dyn Storage, cipher: CipherText) -> StdResult<CheckPoint> {
         // println!("decrypting cipher {:?}", cipher);
         let key = AEAD_KEY.load(store).unwrap();
-
-        let cipher_vec: Vec<u8> = from_binary(&cipher).unwrap();
+        let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
+        let nonce_slice: &[u8] = nonce_vec.as_slice();
+        let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
+        let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
         let cipher_slice: &[u8] = cipher_vec.as_slice();
         // println!("decrypting cipher_vec {:?}", cipher_slice);
-        let checkpoint_slice = decrypt(cipher_slice, &key).unwrap();
+        let checkpoint_slice = decrypt_with_nonce(cipher_slice, &key, &nonce_slice).unwrap();
         // println!("decrypted checkpoint_vec {:?}", checkpoint_slice);
         let checkpoint_bin = Binary::from(checkpoint_slice);
         // println!("decrypted checkpoint_bin {:?}", checkpoint_bin);
@@ -129,7 +130,7 @@ impl CheckPoint {
         return Ok(checkpoint);
     }
 
-    pub fn encrypt_checkpoint(store: &dyn Storage, prng: &mut ContractPrng, checkpoint: CheckPoint) -> StdResult<Binary> {
+    pub fn encrypt_checkpoint(store: &dyn Storage, prng: &mut ContractPrng, checkpoint: CheckPoint) -> StdResult<CipherText> {
         let key = AEAD_KEY.load(store).unwrap();
         let nonce = get_nonce(prng);
 
@@ -138,11 +139,6 @@ impl CheckPoint {
         let checkpoint_vec = checkpoint_bin.as_slice();
         // println!("encrypting checkpoint_vec {:?}", checkpoint_vec);
 
-        let cipher = encrypt_with_nonce(checkpoint_vec, &key, &nonce).unwrap();
-        // println!("encrypted cipher {:?}", cipher);
-        let cipher_bin = to_binary(&cipher);
-        // println!("encrypted cipher_bin {:?}", cipher_bin);
-
-        return cipher_bin;
+        encrypt_with_nonce(checkpoint_vec, &key, &nonce)
     }
 }

@@ -1,5 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Binary, Uint128, Addr};
+use crate::utils::CipherText;
 
 #[cw_serde]
 pub struct InstantiateMsg {}
@@ -26,11 +27,11 @@ pub enum ExecuteMsg {
     },
 
     CommitResponse {
-        cipher: Binary
+        cipher: CipherText
     },
 
     WriteCheckpoint {
-        cipher: Binary       
+        cipher: CipherText
     },
 
     CreateViewingKey {
@@ -67,7 +68,7 @@ pub enum QueryMsg {
     GetCheckpoint {
     },
     ProcessNext {
-        cipher: Binary
+        cipher: CipherText
     }
 }
 
@@ -93,6 +94,6 @@ pub struct GetRequestAnswer {
 
 #[cw_serde]
 pub struct ProcessResponseAnswer {
-    pub request_cipher: Binary,
-    pub checkpoint_cipher: Binary
+    pub request_cipher: CipherText,
+    pub checkpoint_cipher: CipherText
 }

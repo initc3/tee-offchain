@@ -1,3 +1,10 @@
+# This is a build suitable for uploading to mainnet.
+# Calls to `debug_print` get removed by the compiler.
+.PHONY: build-mainnet _build-mainnet
+build-mainnet: _build-mainnet compress-wasm
+_build-mainnet:
+	RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
+
 .PHONY: check
 check:
 	cargo check
@@ -19,14 +26,6 @@ unit-test:
 .PHONY: build _build
 build: _build compress-wasm
 _build:
-	#RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --features="debug-print"
-	RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
-
-# This is a build suitable for uploading to mainnet.
-# Calls to `debug_print` get removed by the compiler.
-.PHONY: build-mainnet _build-mainnet
-build-mainnet: _build-mainnet compress-wasm
-_build-mainnet:
 	RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown
 
 # like build-mainnet, but slower and more deterministic
@@ -35,7 +34,7 @@ build-mainnet-reproducible:
 	docker run --rm -v "$$(pwd)":/contract \
 		--mount type=volume,source="$$(basename "$$(pwd)")_cache",target=/contract/target \
 		--mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
-		enigmampc/secret-contract-optimizer:1.0.3
+		ghcr.io/scrtlabs/localsecret:v1.6.0-rc.3
 
 .PHONY: compress-wasm
 compress-wasm:
@@ -52,27 +51,30 @@ schema:
 .PHONY: start-server
 start-server: # CTRL+C to stop
 	docker run -it --rm \
-		-p 26657:26657 -p 26656:26656 -p 1317:1317 -p 5000:5000 \
+		-p 9091:9091 -p 26657:26657 -p 26656:26656 -p 1317:1317 -p 5000:5000 \
 		-v $$(pwd):/root/code \
-		--name secretdev enigmampc/secret-network-sw-dev:v1.2.6
+		--name secretdev ghcr.io/scrtlabs/localsecret:v1.9.0
 
 # This relies on running `start-server` in another console
 # You can run other commands on the secretcli inside the dev image
 # by using `docker exec secretdev secretcli`.
 .PHONY: store-contract-local
 store-contract-local:
-	docker exec secretdev secretcli tx compute store -y --from a --gas 1000000 /root/code/contract.wasm.gz
+	docker exec secretdev secretcli tx compute store -y --from a --gas 5000000 /root/code/contract.wasm.gz
 
-.PHONY: contract
-contract:
-	DOCKER_BUILDKIT=1 docker build \
-			--target artifact \
-      --tag tee-offchain:artifact \
-			--output type=local,dest=artifacts \
-			.
+.PHONY: intantiate-local
+instantiate-local:
+	docker exec secretdev secretcli tx compute instantiate 1 '{}' -y  --from a --gas 5000000 --label yo
+
+.PHONY: cli-store-contract
+cli-store-contract:
+	secretcli tx compute store -y --from a --gas 5000000 contract.wasm.gz
+
+.PHONY: cli-instantiate
+cli-instantiate:
+	secretcli tx compute instantiate 1 '{}' -y  --from a --gas 5000000 --label yo
 
 .PHONY: clean
 clean:
 	cargo clean
 	-rm -f ./contract.wasm ./contract.wasm.gz
-	-rm -f ./artifacts/*
