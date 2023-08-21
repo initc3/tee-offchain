@@ -8,71 +8,58 @@ cargo test
 ## Build and deploy the contract on a local net
 Launch the local net
 ```
-docker run -it -p 9091:9091 -p 26657:26657 -p 1317:1317 -p 5000:5000 \
-  --name localsecret ghcr.io/scrtlabs/localsecret:latest
+make start-server
+```
+
+In a seperate terminal Setup test accounts
+```
+./setup_accounts.sh
 ```
 
 Build and optmize the contract via a docker container with:
 ```
-make contract
+make build
 ```
 This will output a `contract.wasm.gz` file ready to be deployed.
 
-Store the contract on chain
-```
-secretcli tx compute store contract.wasm.gz --gas 5000000 --from <your-address> --chain-id secretdev-1
-```
 
-Check
+Run worker script
 ```
-secretcli query compute list-code
+cd worker/js
+npm install
+npm run worker
 ```
 
-Instantiate the contract
+Example Output
 ```
-secretcli tx compute instantiate 1 {} --from <your-address> --label rollupContract -y
+Uploading contract
+codeId:  52
+Contract hash: 69c324044c4362862657d9a48368bae6a75af9a3bce1f8831dd148c4e7cb1c2b
+contractAddress=secret1fse00hs0clpgkaz83rkc0rtglr04uqpf6ctv5y
+[user1a57rwy] Sending deposit 100 uscrt
+[user1tah2fd] Sending deposit 100 uscrt
+[user1a57rwy] viewingKey api_key_8DrgKPL1S4ksEOBOaqE2B06pkyKrxSeyLw99UBgxX5c=
+[user1tah2fd] viewingKey api_key_8LioLjry849VFUVY+3wD5tNBkVnotyOiNM2JM1546+w=
+[user1a57rwy] balance=0
+[user1tah2fd] balance=0
+*****************starting worker1ld9a that processes 2 transactions every 5000 ms*****************
+[worker1ld9a] Sending commit
+[worker1ld9a] Sending write checkpoint
+[worker1ld9a] Sending commit
+[worker1ld9a] Sending write checkpoint
+[user1a57rwy] balance=100
+[user1tah2fd] balance=100
+[user1a57rwy] Sending transfer 50 to user1tah2fd
+[worker1ld9a] Sending commit
+[worker1ld9a] Sending write checkpoint
+[user1a57rwy] balance=50
+[user1tah2fd] balance=150
+[user1a57rwy] Sending withdraw 50 uscrt
+[user1tah2fd] Sending withdraw 50 uscrt
+[worker1ld9a] Sending commit
+[worker1ld9a] Sending write checkpoint
+[worker1ld9a] Sending commit
+[worker1ld9a] Sending write checkpoint
+[user1a57rwy] balance=0
+[user1tah2fd] balance=100
 ```
-
-Check
-```
-secretcli query compute list-contract-by-code 1
-```
-
-
-## Contributing
-File issues & pull requests as you wish!
-
-1. Clone the repo
-2. Create a branch
-4. Make a pull request
-5. Ask your peers to review
-6. Wait for the tests to pass
-7. Once reviewed and the tests have passed, maintainers will rebase & merge
-
-You can think of a pull request like a block proposal in a blockchain.
-The merging of the block in a blockchain is achieved via a consensus protocol,
-whereas in collaborative software development it is achieved via a combination
-of automated processes such as continous integration, and code reviews by humans.
-**Since humans are involved, you can think of it like a sport team or a music band,
-with whom you are playing. The goal is to win, to make cool music, to write cool software.
-Be cool and work with your teammates.**
-
-Will very loosely attempt to follow ZeroMQ's RFC 42/C4:
-the [Collective Code Construction Contract][c4].
-
-At the very least, let's try to follow:
-
-> **2.3. Patch Requirements**
->
-> 2. A patch SHOULD be a minimal and accurate answer to exactly one identified and
-     agreed problem.
-
-> 6. A patch MUST compile cleanly and pass project self-tests on at least the
-     principal target platform.
-
-> **2.5. Branches and Releases**
->
-> 1. The project SHALL have one branch ("main") that always holds the latest
-     in-progress version and SHOULD always build.
-
-[c4]: https://rfc.zeromq.org/spec/42/
