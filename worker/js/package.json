@@ -1,0 +1,15 @@
+{
+  "name": "tee-offchain-worker",
+  "version": "1.0.0",
+  "description": "SecretJS templates for Secret Network",
+  "main": "index.js",
+  "scripts": {
+    "worker": "node src/worker.js"
+  },
+  "author": "Taariq Levack",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^8.2.0",
+    "secretjs": "^1.5.1"
+  }
+}
