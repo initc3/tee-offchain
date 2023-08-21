@@ -1,9 +1,9 @@
 use cosmwasm_schema::cw_serde;
 
-use cosmwasm_std::{Addr, Binary, Uint128, Env, StdResult, Storage, StdError, to_binary, from_binary};
+use cosmwasm_std::{Addr, Binary, Uint128, StdResult, Storage, StdError, to_binary, from_binary};
 use secret_toolkit::storage::Item;
 use secret_toolkit_crypto::ContractPrng;
-use crate::utils::{encrypt_with_nonce, decrypt_with_nonce, get_nonce, get_prng, CipherText, IV_SIZE};
+use crate::utils::{encrypt_with_nonce, decrypt_with_nonce, get_nonce, CipherText};
 
 /// Basic configuration struct
 pub static CONFIG_KEY: Item<State> = Item::new(b"config");
