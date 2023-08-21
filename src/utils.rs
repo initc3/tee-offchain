@@ -17,20 +17,23 @@ type IV = [u8; IV_SIZE];
 
 #[cw_serde]
 pub struct CipherText {
-    pub cipher: Binary,
-    pub nonce: Binary,
+    pub cipher: Vec<u8>,
+    pub nonce: IV,
 }
 
-pub fn encrypt_with_nonce(message: &[u8], key: &SymmetricKey, iv: &IV) -> Result<CipherText, StdError> {
+pub fn encrypt_with_nonce(message: &[u8], key: &SymmetricKey, iv: &IV) -> Result<Binary, StdError> {
     let symmetric_key: &Key<Aes256Gcm> = key.into();
     let nonce = GenericArray::from_slice(iv);
     let cipher = Aes256Gcm::new(&symmetric_key);
     let ciphertext = cipher.encrypt(&nonce, message).unwrap();
     let ciphertext_vec = Vec::from(ciphertext);
-    Ok(CipherText {
-        cipher: to_binary(&ciphertext_vec).unwrap(),
-        nonce: to_binary(&iv).unwrap(),
-    })
+    let ciphertext_ = CipherText {
+        cipher: ciphertext_vec,
+        nonce:  *iv,
+    };
+    let cipher_bin = to_binary(&ciphertext_)?;
+
+    Ok(cipher_bin)
 }
 
 pub fn decrypt_with_nonce(cipheriv: &[u8], key: &SymmetricKey, iv: &IV) -> Result<Vec<u8>, StdError> {

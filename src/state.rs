@@ -66,15 +66,16 @@ impl Request {
 }
 impl ResponseState {
 
-    pub fn decrypt_response(store: &dyn Storage, cipher: CipherText) -> StdResult<ResponseState> {
+    pub fn decrypt_response(store: &dyn Storage, cipher: Binary) -> StdResult<ResponseState> {
+        let ciphertext: CipherText = from_binary(&cipher).unwrap();
         let key = AEAD_KEY.load(store).unwrap();
-        let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
-        let cipher_slice: &[u8] = cipher_vec.as_slice();
-        let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
-        let nonce_slice = nonce_vec.as_slice();
-        let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
+        // let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
+        let cipher_slice: &[u8] = ciphertext.cipher.as_slice();
+        // let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
+        // let nonce_slice = nonce_vec.as_slice();
+        // let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
         // println!("decrypting cipher_vec {:?}", cipher_slice);
-        let response_slice = decrypt_with_nonce(cipher_slice, &key, &nonce_slice).unwrap();
+        let response_slice = decrypt_with_nonce(cipher_slice, &key, &ciphertext.nonce).unwrap();
         // println!("decrypted response_slice {:?}", response_slice);
 
         let response_bin = Binary::from(response_slice);
@@ -84,7 +85,7 @@ impl ResponseState {
 
     }
 
-    pub fn encrypt_response(store: &dyn Storage, prng: &mut ContractPrng, response: ResponseState) -> StdResult<CipherText> {
+    pub fn encrypt_response(store: &dyn Storage, prng: &mut ContractPrng, response: ResponseState) -> StdResult<Binary> {
         let key = AEAD_KEY.load(store).unwrap();
         let nonce = get_nonce(prng);
 
@@ -113,16 +114,17 @@ impl CheckPoint {
         CHECKPOINT_KEY.save(store, &checkpoint)
     }
 
-    pub fn decrypt_checkpoint(store: &dyn Storage, cipher: CipherText) -> StdResult<CheckPoint> {
+    pub fn decrypt_checkpoint(store: &dyn Storage, cipher: Binary) -> StdResult<CheckPoint> {
+        let ciphertext: CipherText = from_binary(&cipher).unwrap();
         // println!("decrypting cipher {:?}", cipher);
         let key = AEAD_KEY.load(store).unwrap();
-        let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
-        let nonce_slice: &[u8] = nonce_vec.as_slice();
-        let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
-        let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
-        let cipher_slice: &[u8] = cipher_vec.as_slice();
+        // let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
+        // let nonce_slice: &[u8] = nonce_vec.as_slice();
+        // let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
+        // let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
+        let cipher_slice: &[u8] = ciphertext.cipher.as_slice();
         // println!("decrypting cipher_vec {:?}", cipher_slice);
-        let checkpoint_slice = decrypt_with_nonce(cipher_slice, &key, &nonce_slice).unwrap();
+        let checkpoint_slice = decrypt_with_nonce(cipher_slice, &key, &ciphertext.nonce).unwrap();
         // println!("decrypted checkpoint_vec {:?}", checkpoint_slice);
         let checkpoint_bin = Binary::from(checkpoint_slice);
         // println!("decrypted checkpoint_bin {:?}", checkpoint_bin);
@@ -130,7 +132,7 @@ impl CheckPoint {
         return Ok(checkpoint);
     }
 
-    pub fn encrypt_checkpoint(store: &dyn Storage, prng: &mut ContractPrng, checkpoint: CheckPoint) -> StdResult<CipherText> {
+    pub fn encrypt_checkpoint(store: &dyn Storage, prng: &mut ContractPrng, checkpoint: CheckPoint) -> StdResult<Binary> {
         let key = AEAD_KEY.load(store).unwrap();
         let nonce = get_nonce(prng);
 
