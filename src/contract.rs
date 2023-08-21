@@ -3,7 +3,7 @@ use sha2::{Sha256, Digest};
 use crate::msg::{ExecuteMsg, CreateViewingKeyAnswer, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
 use crate::state::{State, DEPOSIT, WITHDRAW, TRANSFER, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
-use crate::utils::{get_key, bool_to_uint128, get_prng, CipherText};
+use crate::utils::{get_key, bool_to_uint128, get_prng};
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
 
 #[entry_point]
@@ -663,7 +663,6 @@ mod tests {
     use cosmwasm_std::{from_binary, StdResult, Uint128, Coin, StdError, Binary};
     use crate::contract::{gen_hash, gen_mac, instantiate, query, execute};
     use crate::msg::{ExecuteMsg, CreateViewingKeyAnswer, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, ProcessResponseAnswer};
-    // use crate::utils::CipherText;
 
     // use std::any::Any;
     // use cosmwasm_std::testing::*;

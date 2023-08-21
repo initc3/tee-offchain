@@ -5,8 +5,7 @@ use aes_gcm::{
 use generic_array::GenericArray;
 use secret_toolkit_crypto::ContractPrng;
 use crate::state::{SymmetricKey};
-use cosmwasm_std::{StdError, Env, Uint128, Storage, Binary, to_binary, from_binary};
-use sha2::{Sha256, Digest};
+use cosmwasm_std::{StdError, Env, Uint128, Binary, to_binary};
 use cosmwasm_schema::cw_serde;
 
 
