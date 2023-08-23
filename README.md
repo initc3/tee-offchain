@@ -1,26 +1,35 @@
 # tee-offchain
 
+## Prerequisits
+
+- Rust and Cargo
+- Docker
+- Node and NPM 
+- [Secretcli](https://docs.scrt.network/secret-network-documentation/development/getting-started/setting-up-your-environment#install-secretcli)
+
+## Build contract
+
+Build and optmize the contract with:
+```
+make build
+```
+This will output a `contract.wasm.gz` file ready to be deployed.
+
 ## Unit tests
 ```
 cargo test
 ```
 
 ## Build and deploy the contract on a local net
-Launch the local net
+Launch the local net in a seperate terminal
 ```
 make start-server
 ```
 
-In a seperate terminal Setup test accounts
+Setup test accounts
 ```
 ./setup_accounts.sh
 ```
-
-Build and optmize the contract via a docker container with:
-```
-make build
-```
-This will output a `contract.wasm.gz` file ready to be deployed.
 
 
 Run worker script
@@ -32,8 +41,13 @@ npm run worker
 
 Example Output
 ```
+
+> tee-offchain-worker@1.0.0 worker /home/root/tee-offchain/worker/js
+> node src/worker.js
+
 Uploading contract
-codeId:  52
+codeId:  1
+
 Contract hash: 69c324044c4362862657d9a48368bae6a75af9a3bce1f8831dd148c4e7cb1c2b
 contractAddress=secret1fse00hs0clpgkaz83rkc0rtglr04uqpf6ctv5y
 [user1a57rwy] Sending deposit 100 uscrt
@@ -62,4 +76,5 @@ contractAddress=secret1fse00hs0clpgkaz83rkc0rtglr04uqpf6ctv5y
 [worker1ld9a] Sending write checkpoint
 [user1a57rwy] balance=0
 [user1tah2fd] balance=100
+^C
 ```
