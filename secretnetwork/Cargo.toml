@@ -1,7 +1,7 @@
 [package]
-name = "secret_contract_template"
+name = "tee-offchain"
 version = "1.0.0"
-authors = ["Gabe Arrouye"]
+authors = ["Gabe Arrouye", "Nerla Jean-Louis"]
 edition = "2021"
 
 exclude = [
@@ -39,7 +39,6 @@ serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 schemars = "0.8.8"
 sha2 = { version = "0.10.6"}
 hmac = { version = "0.12.1" }
-aead = "0.5.2"
 
 cw-storage-plus = "1.0.1"
 cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.10", features = ["random"]}
@@ -47,7 +46,9 @@ cosmwasm-storage = { package = "secret-cosmwasm-storage", version = "1.1.10", de
 cosmwasm-schema = "1.0.0"
 secret-toolkit = { version = "0.9.0", default-features = false, features = ["utils", "storage", "serialization", "crypto", "viewing-key"] }
 secret-toolkit-crypto = { version = "0.9.0", features = ["hash", "rand", "ecc-secp256k1"] }
-ring = "0.16.20"
+
+aes-gcm = {version = "0.10.2", default-features = false, features =["aes", "alloc"]}
+generic-array = "0.14.7"
 
 #[patch.crates-io]
 #cosmwasm-std = { package = "secret-cosmwasm-std", version = "1.1.10", features = ["random"]}

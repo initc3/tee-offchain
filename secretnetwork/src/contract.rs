@@ -1,7 +1,7 @@
 use cosmwasm_std::{Coin, entry_point, BankMsg, Binary, Deps, DepsMut, Env, MessageInfo, Response, Uint128, StdResult, ensure, StdError, to_binary, Addr, CosmosMsg};
 use sha2::{Sha256, Digest};
-use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
-use crate::state::{State, ReqType, CheckPoint, Request, ResponseState, AddressBalance};
+use crate::msg::{ExecuteMsg, CreateViewingKeyAnswer, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, GetRequestAnswer, ProcessResponseAnswer};
+use crate::state::{State, DEPOSIT, WITHDRAW, TRANSFER, CheckPoint, Request, ResponseState, AddressBalance};
 use crate::state::{CHECKPOINT_KEY, PREFIX_REQUESTS_KEY, CONFIG_KEY, REQUEST_SEQNO_KEY, AEAD_KEY, REQUEST_LEN_KEY};
 use crate::utils::{get_key, bool_to_uint128, get_prng};
 use secret_toolkit::viewing_key::{ViewingKey, ViewingKeyStore};
@@ -92,20 +92,20 @@ pub fn execute(
                 amount
             ),
         ExecuteMsg::CommitResponse {
-            cipher
+            cipher,
         } => try_commit_response(
                 deps,
                 env,
                 info,
-                cipher
+                cipher,
             ),
         ExecuteMsg::WriteCheckpoint {
-            cipher
+            cipher,
         } => try_write_checkpoint(
                 deps,
                 env,
                 info,
-                cipher
+                cipher,
         ),
         ExecuteMsg::CreateViewingKey { 
             entropy
@@ -182,7 +182,7 @@ fn try_submit_deposit(
     }
 
     let request = Request {
-        reqtype: ReqType::DEPOSIT,
+        reqtype: Uint128::from(DEPOSIT),
         from: info.sender,
         to: None,
         amount: amount,
@@ -212,7 +212,7 @@ fn try_submit_transfer(
     //TODO save amount in contract
 
     let request = Request {
-        reqtype: ReqType::TRANSFER,
+        reqtype: Uint128::from(TRANSFER),
         from: info.sender,
         to: Some(to),
         amount: amount,
@@ -239,7 +239,7 @@ fn try_submit_withdraw(
     }
 
     let request = Request {
-        reqtype: ReqType::WITHDRAW,
+        reqtype: Uint128::from(WITHDRAW),
         from: info.sender,
         to: None,
         amount: amount,
@@ -280,7 +280,7 @@ fn try_commit_response(
     println!("try_commit_response load at seqno {:?}", response.seqno);
 
     let request = Request::load(deps.storage, response.seqno).unwrap();
-    if request.reqtype == ReqType::WITHDRAW {
+    if request.reqtype.u128() == WITHDRAW {
         let withdrawal_coins: Vec<Coin> = vec![Coin {
             denom: "uscrt".to_string(),
             amount: response.amount,
@@ -328,7 +328,8 @@ pub fn try_create_key(
         info.sender.as_str(),
         entropy.as_ref(),
     );
-    Ok(Response::new().set_data(to_binary(&key)?))
+    // Ok(Response::new().set_data(to_binary(&key)?))
+    Ok(Response::new().set_data(to_binary(&CreateViewingKeyAnswer { key })?))
 }
 
 pub fn try_set_key(deps: DepsMut, info: MessageInfo, key: String) -> StdResult<Response> {
@@ -467,7 +468,7 @@ fn get_checkpoint(
 ) -> StdResult<Binary> {
 
     let checkpoint = CheckPoint::load(deps.storage)?;
-    let mut prng = get_prng(env);
+    let mut prng = get_prng(checkpoint.seqno, env);
     let cipher = CheckPoint::encrypt_checkpoint(deps.storage, &mut prng, checkpoint)?;
 
     let resp_as_b64 = to_binary(&cipher).unwrap();
@@ -502,25 +503,37 @@ fn get_balance(
 fn process_request(
     deps: Deps,
     env: Env,
-    cipher: Binary
+    cipher: Binary,
 )-> StdResult<Binary> {
     let mut checkpoint: CheckPoint = CheckPoint::decrypt_checkpoint(deps.storage, cipher).unwrap();
     let seqno = checkpoint.resp_seqno;
-    println!("process_request seqno {:?}", seqno);
-    let request = Request::load(deps.storage, seqno).unwrap();
-    let mut found: bool = false;
+    let req_len = REQUEST_LEN_KEY.load(deps.storage).unwrap();
+    println!("process_request seqno {:?} req_len {:?}", seqno, req_len);
+    if  seqno >= req_len {
+        return Err(StdError::generic_err("Response seqno less than number of requests"));
+    }
+    let request = Request::load(deps.storage, seqno)?;
+
+    let mut found_from: bool = false;
     for i in 0..checkpoint.checkpoint.len() {
         let a = checkpoint.checkpoint.get_mut(i).unwrap();
         if a.address == request.from {
-            found = true;
+            found_from = true;
         }
     }
-    if !found {
+    if !found_from {
         let a = AddressBalance{balance: Uint128::zero(), address: request.from.clone()};
         checkpoint.checkpoint.push(a);
     }
-    let response = match request.reqtype {
-        ReqType::DEPOSIT {} => {
+
+    let mut response = ResponseState {
+        seqno: seqno,
+        status: false,
+        amount: Uint128::zero(),
+        response: String::from("Type not Found")
+    };
+
+    if request.reqtype.u128() == DEPOSIT {
             for i in 0..checkpoint.checkpoint.len() {
                 let a = checkpoint.checkpoint.get_mut(i).unwrap();
                 let b: bool = a.address == request.from;
@@ -528,65 +541,72 @@ fn process_request(
                 let m = request.amount.checked_mul(b_int).unwrap();
                 checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
             }
-            ResponseState {
+            response = ResponseState {
                 seqno: seqno,
                 status: true,
                 amount: Uint128::zero(),
                 response: String::default()
-            }
-        },
-        ReqType::WITHDRAW {} => {
-            let mut balance_ok: bool = true;
-            for i in 0..checkpoint.checkpoint.len() {
-                let a = checkpoint.checkpoint.get_mut(i).unwrap();
-                let b: bool = a.address == request.from;
-                balance_ok = balance_ok && (!b || a.balance >= request.amount);
-                let b_int = bool_to_uint128(b);
-                let balance_ok_int = bool_to_uint128(balance_ok);
-                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
-                checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
-            }
+            };
+    } else if request.reqtype.u128() == WITHDRAW {
+        let mut balance_ok: bool = true;
+        for i in 0..checkpoint.checkpoint.len() {
+            let a = checkpoint.checkpoint.get_mut(i).unwrap();
+            let b: bool = a.address == request.from;
+            balance_ok = balance_ok && (!b || a.balance >= request.amount);
+            let b_int = bool_to_uint128(b);
             let balance_ok_int = bool_to_uint128(balance_ok);
-            println!("process_request withdraw {:?} balance_ok {:?}", request.from,  balance_ok);
-            ResponseState {
-                seqno: seqno,
-                status: balance_ok,
-                amount: request.amount.checked_mul(balance_ok_int).unwrap(),
-                response: String::default()
-            }
-        },
-        ReqType::TRANSFER => {
-            let mut balance_ok: bool = true;
-            for i in 0..checkpoint.checkpoint.len() {
-                let a = checkpoint.checkpoint.get_mut(i).unwrap();
-                let b: bool = a.address == request.from;
-                balance_ok = balance_ok && (!b || a.balance >= request.amount);
-                let b_int = bool_to_uint128(b);
-                let balance_ok_int = bool_to_uint128(balance_ok);
-                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
-                checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
-            }
+            let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+            checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
+        }
+        let balance_ok_int = bool_to_uint128(balance_ok);
+        println!("process_request withdraw {:?} balance_ok {:?}", request.from,  balance_ok);
+        response = ResponseState {
+            seqno: seqno,
+            status: balance_ok,
+            amount: request.amount.checked_mul(balance_ok_int).unwrap(),
+            response: String::default()
+        };
+    } else if request.reqtype.u128() == TRANSFER {
+        let mut balance_ok: bool = true;
+        for i in 0..checkpoint.checkpoint.len() {
+            let a = checkpoint.checkpoint.get_mut(i).unwrap();
+            let b: bool = a.address == request.from;
+            balance_ok = balance_ok && (!b || a.balance >= request.amount);
+            let b_int = bool_to_uint128(b);
             let balance_ok_int = bool_to_uint128(balance_ok);
-            for i in 0..checkpoint.checkpoint.len() {
-                let a = checkpoint.checkpoint.get_mut(i).unwrap();
-                let b: bool = a.address == request.to.clone().unwrap();
-                let b_int = bool_to_uint128(b);
-                let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
-                checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
-            }
-            println!("process_request transfer from {:?} to {:?} balance_ok {:?}", request.from, request.to, balance_ok);
-            ResponseState {
+            let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+            checkpoint.checkpoint[i].balance = a.balance.checked_sub(m).unwrap();
+        }
+        let balance_ok_int = bool_to_uint128(balance_ok);
+        for i in 0..checkpoint.checkpoint.len() {
+            let a = checkpoint.checkpoint.get_mut(i).unwrap();
+            let b: bool = a.address == request.to.clone().unwrap();
+            let b_int = bool_to_uint128(b);
+            let m = request.amount.checked_mul(b_int.checked_mul(balance_ok_int).unwrap()).unwrap();
+            checkpoint.checkpoint[i].balance = a.balance.checked_add(m).unwrap();
+        }
+    
+        println!("process_request transfer from {:?} to {:?} balance_ok {:?}", request.from, request.to, balance_ok);
+        if balance_ok {
+            response = ResponseState {
                 seqno: seqno,
                 status: balance_ok,
                 amount: Uint128::zero(),
                 response: String::from("Transfer ok")
-            }
+            };
+        } else {
+            response = ResponseState {
+                seqno: seqno,
+                status: balance_ok,
+                amount: Uint128::zero(),
+                response: String::from("Transfer failed")
+            };
         }
-    };
+    }
     checkpoint.seqno = checkpoint.seqno.checked_add(Uint128::one()).unwrap();
     checkpoint.resp_seqno = checkpoint.resp_seqno.checked_add(Uint128::one()).unwrap();
     println!("process_request requrning checkpoint {:?}", checkpoint);
-    let mut prng = get_prng(env);
+    let mut prng = get_prng(checkpoint.seqno, env);
 
     let resp_cipher = ResponseState::encrypt_response(deps.storage, &mut prng, response).unwrap();
     let chkpt_cipher = CheckPoint::encrypt_checkpoint(deps.storage, &mut prng, checkpoint).unwrap();
@@ -642,7 +662,8 @@ mod tests {
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
     use cosmwasm_std::{from_binary, StdResult, Uint128, Coin, StdError, Binary};
     use crate::contract::{gen_hash, gen_mac, instantiate, query, execute};
-    use crate::msg::{ExecuteMsg, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, ProcessResponseAnswer};
+    use crate::msg::{ExecuteMsg, CreateViewingKeyAnswer, GetStateAnswer, InstantiateMsg, IterateHashAnswer, QueryMsg, ProcessResponseAnswer};
+
     // use std::any::Any;
     // use cosmwasm_std::testing::*;
 
@@ -800,7 +821,13 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
+
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -849,8 +876,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        // let answer: ExecuteAnswer = from_binary(&handle_result.unwrap().data.unwrap()).unwrap();
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk
         };
@@ -903,7 +934,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -972,7 +1008,135 @@ mod tests {
 
 
     #[test]
-    fn test_depose_multi() {
+    fn test_process_seqno() {
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert! {
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
+        let mocked_env = mock_env();
+        let mut mock_deps = mock_dependencies();
+        let mocked_info = mock_info("owner", &[]);
+        let init_resp = instantiate(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), InstantiateMsg {});
+        assert! {
+            init_resp.is_ok(),
+            "Instantiate Failed"
+        }
+
+        let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
+        let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg);
+        assert! {
+            get_checkpoint_resp.is_ok(),
+            "Get Checkpoint Failed"
+        }
+
+        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
+
+        let mock_depositer = mock_info("depositer", &[Coin {
+            denom: "uscrt".to_string(),
+            amount: Uint128::new(1000),
+        }]);
+
+        let create_vk_msg = ExecuteMsg::CreateViewingKey {
+            entropy: "yo".to_string()
+        };
+        let create_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), create_vk_msg);
+        assert! {
+            create_vk_resp.is_ok(),
+            "Creake Viewing Key Failed"
+        }
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
+        let set_vk_msg = ExecuteMsg::SetViewingKey {
+            key: vk.clone()
+        };
+        let set_vk_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), set_vk_msg);
+        assert! {
+            set_vk_resp.is_ok(),
+            "Set Viewing Key Failed"
+        }
+
+        let request_deposit_msg = ExecuteMsg::SubmitDeposit{};
+        let request_deposit_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mock_depositer.clone(), request_deposit_msg);
+        assert! {
+            request_deposit_resp.is_ok(),
+            "Submit Deposit Failed"
+        }
+
+        let get_balance_msg = QueryMsg::GetBalance{ address: mock_depositer.clone().sender, key: vk};
+        let get_balance_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg.clone());
+        assert!{
+            get_balance_resp.is_ok(),
+            "Get Balance Failed"
+        }
+        let balance: Uint128 = from_binary(&get_balance_resp.unwrap()).unwrap();
+        // println!("balance {:?}", balance);
+        assert!(
+            Uint128::zero() == balance,
+            "Balance should be 0 before Response Commit"
+        );
+
+        let process_next_msg = QueryMsg::ProcessNext{ cipher: checkpoint_cipher };
+        let process_next_resp = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg);
+        assert!{
+            process_next_resp.is_ok(),
+            "Process Next Failed"
+        }
+
+        let process_answer: ProcessResponseAnswer = from_binary(&process_next_resp.unwrap()).unwrap();
+        let commit_response_msg = ExecuteMsg::CommitResponse{cipher: process_answer.request_cipher};
+        let commit_response_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), commit_response_msg);
+        assert! {
+            commit_response_resp.is_ok(),
+            "Commit Response Failed"
+        }
+
+        let write_checkpoint_msg = ExecuteMsg::WriteCheckpoint{cipher: process_answer.checkpoint_cipher};
+        let write_checkpoint_resp = execute(mock_deps.as_mut(), mocked_env.clone(), mocked_info.clone(), write_checkpoint_msg);
+        assert! {
+            write_checkpoint_resp.is_ok(),
+            "Write Checkpoint Failed"
+        }
+
+        let get_balance_resp2 = query(mock_deps.as_ref(), mocked_env.clone(), get_balance_msg);
+        assert!{
+            get_balance_resp2.is_ok(),
+            "Get Balance Failed"
+        }
+        let balance: Uint128 = from_binary(&get_balance_resp2.unwrap()).unwrap();
+        println!("balance {:?}", balance);
+        assert!(
+            Uint128::new(1000) == balance,
+            "Balance should be 1000 after Response Commit"
+        );
+
+
+        let get_checkpoint_msg = QueryMsg::GetCheckpoint{};
+        let get_checkpoint_resp = query(mock_deps.as_ref(), mocked_env.clone(), get_checkpoint_msg);
+        assert! {
+            get_checkpoint_resp.is_ok(),
+            "Get Checkpoint Failed"
+        }
+        let checkpoint_cipher: Binary = from_binary(&get_checkpoint_resp.unwrap()).unwrap();
+        let process_next_msg = QueryMsg::ProcessNext{ cipher: checkpoint_cipher };
+        let process_next_resp = query(mock_deps.as_ref(), mocked_env.clone(), process_next_msg);
+        assert!{
+            process_next_resp.is_err(),
+            "Process Next didn't Failed"
+        }
+
+    }
+
+    #[test]
+    fn test_deposit_multi() {
         let mocked_env = mock_env();
         let mut mock_deps = mock_dependencies();
         let mocked_info = mock_info("owner", &[]);
@@ -1000,7 +1164,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -1042,7 +1211,12 @@ mod tests {
             create_vk_resp2.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk2: String = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let vk2 = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg2 = ExecuteMsg::SetViewingKey {
             key: vk2.clone()
         };
@@ -1182,7 +1356,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -1340,7 +1519,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -1493,7 +1677,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -1536,7 +1725,11 @@ mod tests {
             create_vk_resp2.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk2: String = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let vk2 = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg2 = ExecuteMsg::SetViewingKey {
             key: vk2.clone()
         };
@@ -1760,7 +1953,12 @@ mod tests {
             create_vk_resp.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk: String = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp.unwrap().data.unwrap()).unwrap();
+        let vk = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg = ExecuteMsg::SetViewingKey {
             key: vk.clone()
         };
@@ -1803,7 +2001,12 @@ mod tests {
             create_vk_resp2.is_ok(),
             "Creake Viewing Key Failed"
         }
-        let vk2: String = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+
+        let answer: CreateViewingKeyAnswer = from_binary(&create_vk_resp2.unwrap().data.unwrap()).unwrap();
+        let vk2 = match answer {
+            CreateViewingKeyAnswer { key } => key,
+            _ => panic!("NOPE"),
+        };
         let set_vk_msg2 = ExecuteMsg::SetViewingKey {
             key: vk2.clone()
         };

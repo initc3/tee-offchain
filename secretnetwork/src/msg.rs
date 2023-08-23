@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Binary, Uint128, Addr};
-use crate::state::ReqType;
+// use crate::utils::CipherText;
 
 #[cw_serde]
 pub struct InstantiateMsg {}
@@ -31,11 +31,13 @@ pub enum ExecuteMsg {
     },
 
     WriteCheckpoint {
-        cipher: Binary       
+        cipher: Binary
     },
+
     CreateViewingKey {
         entropy: String
     },
+
     SetViewingKey {
         key: String
     },
@@ -65,9 +67,15 @@ pub enum QueryMsg {
 
     GetCheckpoint {
     },
+    
     ProcessNext {
         cipher: Binary
     }
+}
+
+#[cw_serde]
+pub struct CreateViewingKeyAnswer {
+    pub key: String
 }
 
 #[cw_serde]
@@ -86,7 +94,7 @@ pub struct IterateHashAnswer {
 
 #[cw_serde]
 pub struct GetRequestAnswer {
-    pub reqtype: ReqType,
+    pub reqtype: Uint128,
     pub from: Addr
 }
 

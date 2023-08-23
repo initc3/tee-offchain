@@ -1,44 +1,28 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "QueryMsg",
-  "description": "QueryMsg that the contract exposes",
+  "title": "ExecuteMsg",
   "oneOf": [
     {
-      "description": "Grab the state for a querier",
       "type": "object",
       "required": [
-        "get_state"
+        "apply_update"
       ],
       "properties": {
-        "get_state": {
-          "type": "object",
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "description": "Iterate upwards bc cool",
-      "type": "object",
-      "required": [
-        "iterate_hash"
-      ],
-      "properties": {
-        "iterate_hash": {
+        "apply_update": {
           "type": "object",
           "required": [
-            "counter",
-            "current_hash",
-            "old_mac"
+            "current_mac",
+            "new_counter",
+            "new_hash"
           ],
           "properties": {
-            "counter": {
-              "$ref": "#/definitions/Uint128"
-            },
-            "current_hash": {
+            "current_mac": {
               "$ref": "#/definitions/Binary"
             },
-            "old_mac": {
+            "new_counter": {
+              "$ref": "#/definitions/Uint128"
+            },
+            "new_hash": {
               "$ref": "#/definitions/Binary"
             }
           },
@@ -50,20 +34,121 @@
     {
       "type": "object",
       "required": [
-        "get_balance"
+        "submit_deposit"
       ],
       "properties": {
-        "get_balance": {
+        "submit_deposit": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "submit_transfer"
+      ],
+      "properties": {
+        "submit_transfer": {
           "type": "object",
           "required": [
-            "address",
-            "key"
+            "amount",
+            "memo",
+            "to"
           ],
           "properties": {
-            "address": {
-              "$ref": "#/definitions/Addr"
+            "amount": {
+              "$ref": "#/definitions/Uint128"
             },
-            "key": {
+            "memo": {
+              "type": "string"
+            },
+            "to": {
+              "$ref": "#/definitions/Addr"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "submit_withdraw"
+      ],
+      "properties": {
+        "submit_withdraw": {
+          "type": "object",
+          "required": [
+            "amount"
+          ],
+          "properties": {
+            "amount": {
+              "$ref": "#/definitions/Uint128"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "commit_response"
+      ],
+      "properties": {
+        "commit_response": {
+          "type": "object",
+          "required": [
+            "cipher"
+          ],
+          "properties": {
+            "cipher": {
+              "$ref": "#/definitions/Binary"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "write_checkpoint"
+      ],
+      "properties": {
+        "write_checkpoint": {
+          "type": "object",
+          "required": [
+            "cipher"
+          ],
+          "properties": {
+            "cipher": {
+              "$ref": "#/definitions/Binary"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "create_viewing_key"
+      ],
+      "properties": {
+        "create_viewing_key": {
+          "type": "object",
+          "required": [
+            "entropy"
+          ],
+          "properties": {
+            "entropy": {
               "type": "string"
             }
           },
@@ -75,51 +160,17 @@
     {
       "type": "object",
       "required": [
-        "get_request"
+        "set_viewing_key"
       ],
       "properties": {
-        "get_request": {
+        "set_viewing_key": {
           "type": "object",
           "required": [
-            "seqno"
+            "key"
           ],
           "properties": {
-            "seqno": {
-              "$ref": "#/definitions/Uint128"
-            }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "get_checkpoint"
-      ],
-      "properties": {
-        "get_checkpoint": {
-          "type": "object",
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "process_next"
-      ],
-      "properties": {
-        "process_next": {
-          "type": "object",
-          "required": [
-            "cipher"
-          ],
-          "properties": {
-            "cipher": {
-              "$ref": "#/definitions/Binary"
+            "key": {
+              "type": "string"
             }
           },
           "additionalProperties": false

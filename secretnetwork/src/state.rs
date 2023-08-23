@@ -1,9 +1,9 @@
 use cosmwasm_schema::cw_serde;
 
-use cosmwasm_std::{Addr, Binary, Uint128, Env, StdResult, Storage, StdError, to_binary, from_binary};
+use cosmwasm_std::{Addr, Binary, Uint128, StdResult, Storage, StdError, to_binary, from_binary};
 use secret_toolkit::storage::Item;
 use secret_toolkit_crypto::ContractPrng;
-use crate::utils::{encrypt_with_nonce, decrypt, get_nonce, get_prng};
+use crate::utils::{encrypt_with_nonce, decrypt_with_nonce, get_nonce, CipherText};
 
 /// Basic configuration struct
 pub static CONFIG_KEY: Item<State> = Item::new(b"config");
@@ -13,7 +13,6 @@ pub static PREFIX_REQUESTS_KEY: Item<Request> = Item::new(b"requests");
 pub static PREFIX_RESPONSE_KEY: Item<ResponseState> = Item::new(b"responses");
 pub static REQUEST_SEQNO_KEY: Item<Uint128> = Item::new(b"request_seqno");
 pub static REQUEST_LEN_KEY: Item<Uint128> = Item::new(b"request_len");
-pub static CHECKPOINT_SEQNO_KEY: Item<Uint128> = Item::new(b"check_seqno");
 pub static CHECKPOINT_KEY: Item<CheckPoint> = Item::new(b"checkpoint");
 pub static AEAD_KEY: Item<SymmetricKey> = Item::new(b"aead_key");
 
@@ -29,19 +28,16 @@ pub struct State {
 
 #[cw_serde]
 pub struct Request {
-    pub reqtype: ReqType,
+    pub reqtype: Uint128,
     pub from: Addr,
     pub to: Option<Addr>,
     pub amount: Uint128,
     pub memo: Option<String>
 }
 
-#[cw_serde]
-pub enum ReqType {
-    DEPOSIT,
-    TRANSFER,
-    WITHDRAW
-}
+pub static DEPOSIT: u128 = 0u128;
+pub static TRANSFER: u128 = 1u128;
+pub static WITHDRAW: u128 = 2u128;
 
 #[cw_serde]
 pub struct ResponseState {
@@ -71,11 +67,15 @@ impl Request {
 impl ResponseState {
 
     pub fn decrypt_response(store: &dyn Storage, cipher: Binary) -> StdResult<ResponseState> {
+        let ciphertext: CipherText = from_binary(&cipher).unwrap();
         let key = AEAD_KEY.load(store).unwrap();
-        let cipher_vec: Vec<u8> = from_binary(&cipher).unwrap();
-        let cipher_slice: &[u8] = cipher_vec.as_slice();
+        // let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
+        let cipher_slice: &[u8] = ciphertext.cipher.as_slice();
+        // let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
+        // let nonce_slice = nonce_vec.as_slice();
+        // let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
         // println!("decrypting cipher_vec {:?}", cipher_slice);
-        let response_slice = decrypt(cipher_slice, &key).unwrap();
+        let response_slice = decrypt_with_nonce(cipher_slice, &key, &ciphertext.nonce).unwrap();
         // println!("decrypted response_slice {:?}", response_slice);
 
         let response_bin = Binary::from(response_slice);
@@ -94,11 +94,7 @@ impl ResponseState {
         let response_vec = response_bin.as_slice();
         // println!("encrypting response_vec {:?}", response_vec);
 
-        let cipher = encrypt_with_nonce(response_vec, &key, &nonce).unwrap();
-        // println!("encrypted cipher {:?}", cipher);
-        let cipher_bin = to_binary(&cipher);
-        // println!("encrypted cipher_bin {:?}", cipher_bin);
-        return cipher_bin;
+        encrypt_with_nonce(response_vec, &key, &nonce)
     }
 }
 
@@ -119,13 +115,16 @@ impl CheckPoint {
     }
 
     pub fn decrypt_checkpoint(store: &dyn Storage, cipher: Binary) -> StdResult<CheckPoint> {
+        let ciphertext: CipherText = from_binary(&cipher).unwrap();
         // println!("decrypting cipher {:?}", cipher);
         let key = AEAD_KEY.load(store).unwrap();
-
-        let cipher_vec: Vec<u8> = from_binary(&cipher).unwrap();
-        let cipher_slice: &[u8] = cipher_vec.as_slice();
+        // let nonce_vec: Vec<u8> = from_binary(&cipher.nonce).unwrap();
+        // let nonce_slice: &[u8] = nonce_vec.as_slice();
+        // let nonce_slice : [u8;IV_SIZE] = nonce_slice[0..IV_SIZE].try_into().unwrap();
+        // let cipher_vec: Vec<u8> = from_binary(&cipher.cipher).unwrap();
+        let cipher_slice: &[u8] = ciphertext.cipher.as_slice();
         // println!("decrypting cipher_vec {:?}", cipher_slice);
-        let checkpoint_slice = decrypt(cipher_slice, &key).unwrap();
+        let checkpoint_slice = decrypt_with_nonce(cipher_slice, &key, &ciphertext.nonce).unwrap();
         // println!("decrypted checkpoint_vec {:?}", checkpoint_slice);
         let checkpoint_bin = Binary::from(checkpoint_slice);
         // println!("decrypted checkpoint_bin {:?}", checkpoint_bin);
@@ -142,11 +141,6 @@ impl CheckPoint {
         let checkpoint_vec = checkpoint_bin.as_slice();
         // println!("encrypting checkpoint_vec {:?}", checkpoint_vec);
 
-        let cipher = encrypt_with_nonce(checkpoint_vec, &key, &nonce).unwrap();
-        // println!("encrypted cipher {:?}", cipher);
-        let cipher_bin = to_binary(&cipher);
-        // println!("encrypted cipher_bin {:?}", cipher_bin);
-
-        return cipher_bin;
+        encrypt_with_nonce(checkpoint_vec, &key, &nonce)
     }
 }
